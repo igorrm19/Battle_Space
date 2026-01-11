@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shadow Realm 3D</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=MedievalSharp&display=swap"
+        rel="stylesheet">
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050202;
+        }
+
+        #app {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui-layer {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: auto;
+        }
+
+        .menu-btn {
+            background: rgba(26, 5, 5, 0.9);
+            border: 2px solid #ffd700;
+            color: #ffd700;
+            padding: 10px 20px;
+            font-family: 'Cinzel', serif;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 0 10px;
+            border-radius: 20px;
+            transition: 0.3s;
+        }
+
+        .menu-btn:hover {
+            background: #ffd700;
+            color: #1a0505;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app"></div>
+    <div id="ui-layer">
+        <button class="menu-btn" id="save-btn" style="border-color: #0f0; color: #0f0;">SALVAR</button>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>
