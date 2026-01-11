@@ -58,6 +58,17 @@ Melhorias na tomada de decisão de NPCs e Chefes.
 - **Chefes (Bosses)**:
     - **Sistema de Ameaça**: Chefes agora focam nos alvos mais fortes (Maior Nível ou o outro Chefe) em 70% das vezes.
     - Isso cria duelos épicos entre os Chefes e os "Campeões" dos NPCs.
+    - **Aprendizado de Combate**:
+        - NPCs que sobrevivem por muito tempo **aprendem** com a batalha.
+        - A cada **10 segundos** vivos, eles ganham **+1 INT** e **+0.5% EVA**.
+        - Veteranos de guerra tornam-se naturalmente mais difíceis de matar e mais eficientes.
+    - **Blocos de Poder (Power-Ups)**:
+        - Pequenos cubos coloridos surgem no campo de batalha.
+        - **🟩 Verde**: Recupera 20% de Vida.
+        - **🟥 Vermelho**: Aumenta o Ataque (+2 Permanente).
+        - **🟦 Azul**: Aumenta a Defesa (+1 Permanente).
+        - **🟦 Ciano**: Aumenta a Vida Máxima (+50 Permanente).
+        - NPCs e Chefes competem por esses recursos para ficarem mais fortes.
 
 ## 🎨 Visual e Interface (UI)
 Melhorias na apresentação e interatividade.
@@ -67,7 +78,11 @@ Melhorias na apresentação e interatividade.
         - **Atributos**: ATK, DEF, INT (Novo!) e EVA.
         - **Status**: Vida atual/máxima, Nível e Facção.
     - Permite analisar a força de cada unidade individualmente.
-- **Efeitos Visuais (VFX)**:
+    - **Efeitos Visuais (VFX)**:
     - **Fogo**: Partículas mais densas e com movimento de subida realista.
     - **Raios**: Mais segmentos e "jitter" para parecer eletricidade real.
     - **Inteligência (INT)**: Novo atributo adicionado que diferencia classes mágicas (Magos) de guerreiras.
+    - **Log de Batalha**:
+        - Novo painel no canto inferior direito.
+        - Notifica em tempo real: **Mortes** (Vermelho), **Level Up** (Amarelo) e **Derrota de Chefes** (Roxo).
+        - Permite acompanhar o fluxo da guerra sem perder detalhes.

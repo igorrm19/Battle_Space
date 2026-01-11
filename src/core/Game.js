@@ -51,6 +51,8 @@ export class Game {
 
         this.init();
         this.animate();
+
+        window.debugNPCs = false; // Default debug off
     }
 
     init() {
@@ -107,6 +109,8 @@ export class Game {
     }
 
     handleMouseClick(event) {
+        if (event.target.tagName !== 'CANVAS') return; // Ignore UI clicks
+
         this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         this.raycaster.setFromCamera(this.mouse, this.sceneManager.camera);
@@ -124,16 +128,16 @@ export class Game {
             const npc = this.npcManager.npcs.find(n => n.mesh === obj);
             if (npc) {
                 this.hud.showNPCInfo(npc);
+                // Set camera focus on this NPC
+                this.sceneManager.setFocus(() => npc.mesh.position);
                 return; // Stop processing if clicked on NPC
             }
         }
 
-        // If no NPC clicked, hide panel
-        this.hud.showNPCInfo(null);
-
         // Movement logic (if needed)
         const intersects = this.raycaster.intersectObject(this.sceneManager.floor);
         if (intersects.length > 0) {
+            this.hud.showNPCInfo(null); // Only deselect if clicking the floor
             this.clickTarget = intersects[0].point.clone();
             this.sceneManager.updateClickMarker(this.clickTarget);
         }
@@ -226,21 +230,32 @@ export class Game {
                 this.monster.update(delta, this.mouse, state);
 
                 // Safety check for NaN positions
-                const pPos = this.playerPos.clone();
-                const mPos = this.monster.mesh.position.clone();
-                const gPos = this.goldBoss.position.clone();
+                const checkNaN = (vec, defaultVec) => {
+                    if (isNaN(vec.x) || isNaN(vec.y) || isNaN(vec.z)) {
+                        vec.copy(defaultVec);
+                        return true;
+                    }
+                    return false;
+                };
 
-                if (isNaN(pPos.x)) pPos.set(0, 10, 25);
-                if (isNaN(mPos.x)) mPos.set(0, 0, 0);
-                if (isNaN(gPos.x)) gPos.set(10, 5, -5);
+                if (checkNaN(this.playerPos, new THREE.Vector3(0, 10, 25))) {
+                    console.warn("Player Pos NaN fixed");
+                }
+                if (checkNaN(this.monster.mesh.position, new THREE.Vector3(0, 0, 0))) {
+                    console.warn("Monster Pos NaN fixed");
+                }
+                if (checkNaN(this.goldBoss.position, new THREE.Vector3(12, 5, -5))) {
+                    console.warn("Gold Boss Pos NaN fixed");
+                }
 
                 updateState({
-                    playerPos: pPos,
-                    monsterPos: mPos,
-                    goldBossPos: gPos
+                    playerPos: this.playerPos.clone(),
+                    monsterPos: this.monster.mesh.position.clone(),
+                    goldBossPos: this.goldBoss.position.clone()
                 });
 
-                this.npcManager.update(delta, this.playerPos);
+                const safeDelta = (delta > 0 && delta < 0.5) ? delta : 0.016;
+                this.npcManager.update(safeDelta, this.playerPos);
 
                 if (this.goldBoss.visible) {
                     // Gold Boss Steering
@@ -248,7 +263,7 @@ export class Game {
                     const goldTarget = this.npcManager.getTargetPosition(goldTargetId);
                     if (goldTarget) {
                         const desired = goldTarget.clone().sub(this.goldBoss.position);
-                        if (desired.length() > 5) {
+                        if (!isNaN(desired.x) && !isNaN(desired.y) && !isNaN(desired.z) && desired.length() > 5) {
                             desired.normalize().multiplyScalar(0.1);
                             this.goldBoss.position.add(desired);
                         }

@@ -5,6 +5,11 @@ export class HUD {
         this.container = container;
         this.init();
         window.addEventListener('stateUpdate', () => this.update());
+
+        // Game Log Listener
+        window.addEventListener('game-log', (e) => {
+            this.addLogMessage(e.detail.message, e.detail.type);
+        });
     }
 
     init() {
@@ -279,5 +284,115 @@ export class HUD {
             blue: '#00ffff'
         };
         return colors[cls] || '#ffffff';
+    }
+
+    showNPCInfo(npc) {
+        let infoPanel = document.getElementById('npc-info-panel');
+        if (!infoPanel) {
+            infoPanel = document.createElement('div');
+            infoPanel.id = 'npc-info-panel';
+            infoPanel.style.cssText = `
+                position: absolute;
+                top: 20px;
+                right: 20px;
+                width: 250px;
+                background: rgba(0, 0, 0, 0.85);
+                border: 2px solid #fff;
+                box-shadow: 0 0 15px rgba(0,0,0,0.8);
+                padding: 15px;
+                color: #fff;
+                font-family: 'Cinzel', serif;
+                z-index: 1000; /* High z-index */
+                pointer-events: none;
+                display: none;
+                border-radius: 8px;
+            `;
+            document.body.appendChild(infoPanel); // Append to body to ensure visibility
+        }
+
+        if (!npc) {
+            infoPanel.style.display = 'none';
+            return;
+        }
+
+        const color = this.getClassColor(npc.class);
+        const factionColor = this.getFactionColor(npc.faction);
+
+        infoPanel.innerHTML = `
+            <h3 style="color: ${color}; margin: 0 0 10px 0; text-align: center; text-shadow: 0 0 5px ${color};">${npc.class.toUpperCase()}</h3>
+            <div style="margin-bottom: 5px;"><strong>Nível:</strong> ${npc.level}</div>
+            <div style="margin-bottom: 5px;"><strong>Facção:</strong> <span style="color: ${factionColor}">${npc.faction.toUpperCase()}</span></div>
+            <hr style="border-color: #555; margin: 10px 0;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9em;">
+                <div>⚔️ ATK: <span style="color:#ff8888">${Math.round(npc.stats.atk)}</span></div>
+                <div>🛡️ DEF: <span style="color:#8888ff">${Math.round(npc.stats.def)}</span></div>
+                <div>🧠 INT: <span style="color:#88ffff">${Math.round(npc.stats.int || 0)}</span></div>
+                <div>💨 EVA: <span style="color:#ffff88">${(npc.stats.eva * 100).toFixed(0)}%</span></div>
+            </div>
+            <div style="margin-top: 15px;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.8em; margin-bottom: 2px;">
+                    <span>HP</span>
+                    <span>${Math.round(npc.hp)} / ${Math.round(npc.maxHp)}</span>
+                </div>
+                <div style="width: 100%; height: 6px; background: #333; border-radius: 3px; overflow: hidden;">
+                    <div style="width: ${(npc.hp / npc.maxHp) * 100}%; height: 100%; background: #00ff00; box-shadow: 0 0 5px #00ff00;"></div>
+                </div>
+            </div>
+        `;
+        infoPanel.style.display = 'block';
+        infoPanel.style.borderColor = color;
+    }
+
+    addLogMessage(message, type = 'info') {
+        let logContainer = document.getElementById('game-log-container');
+        if (!logContainer) {
+            logContainer = document.createElement('div');
+            logContainer.id = 'game-log-container';
+            logContainer.style.cssText = `
+                position: absolute;
+                bottom: 20px;
+                right: 20px;
+                width: 300px;
+                max-height: 200px;
+                overflow-y: hidden;
+                display: flex;
+                flex-direction: column;
+                justify-content: flex-end;
+                pointer-events: none;
+                z-index: 900;
+                font-family: 'Cinzel', serif;
+                font-size: 14px;
+                text-shadow: 1px 1px 2px black;
+            `;
+            document.body.appendChild(logContainer);
+        }
+
+        const entry = document.createElement('div');
+        entry.style.cssText = `
+            margin-top: 5px;
+            padding: 5px 10px;
+            background: rgba(0, 0, 0, 0.6);
+            border-left: 3px solid #fff;
+            color: #fff;
+            opacity: 0;
+            transition: opacity 0.5s;
+        `;
+
+        let color = '#fff';
+        if (type === 'kill') { color = '#ff4444'; entry.style.borderLeftColor = color; }
+        if (type === 'levelup') { color = '#ffff00'; entry.style.borderLeftColor = color; }
+        if (type === 'boss') { color = '#aa00ff'; entry.style.borderLeftColor = color; }
+
+        entry.innerHTML = `<span style="color:${color}">[${type.toUpperCase()}]</span> ${message}`;
+        logContainer.appendChild(entry);
+
+        // Fade in
+        requestAnimationFrame(() => entry.style.opacity = '1');
+
+        // Remove after 5 seconds
+        setTimeout(() => {
+            entry.style.opacity = '0';
+            setTimeout(() => entry.remove(), 500);
+        }, 5000);
     }
 }

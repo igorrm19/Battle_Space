@@ -408,7 +408,7 @@ export class SceneManager {
 
     setFocus(targetFn) {
         this.focusFn = targetFn;
-        this.focusTimer = 3.0; // Focus for 3 seconds
+        this.focusTimer = 30.0; // Focus for 30 seconds
     }
 
     updateCamera(boss1Pos, boss2Pos, playerPos, delta) {

@@ -18,8 +18,10 @@ export class NPC {
         this.position = new THREE.Vector3();
         this.velocity = new THREE.Vector3();
         this.acceleration = new THREE.Vector3();
-        this.maxSpeed = 0.08 + Math.random() * 0.02; // Reduced speed for natural movement
-        this.maxForce = 0.02; // Reduced force for smoother turns
+        this.maxSpeed = 0.08 + Math.random() * 0.02;
+        this.maxForce = 0.02;
+        if (isNaN(this.maxSpeed) || this.maxSpeed <= 0) this.maxSpeed = 0.1;
+        if (isNaN(this.maxForce) || this.maxForce <= 0) this.maxForce = 0.02;
         this.targetPos = null;
 
         this.setInitialPosition(config.index || 0);
@@ -35,7 +37,11 @@ export class NPC {
         this.trailTimer = 0;
 
         // Evolution
-        this.level = config.level || 1;
+        this.level = Number(config.level) || 1;
+        if (isNaN(this.level)) {
+            console.error('NPC Level is NaN, defaulting to 1', config);
+            this.level = 1;
+        }
         this.xp = 0;
         this.maxXp = 100 * Math.pow(1.5, this.level - 1);
         this.baseScale = 1.0; // Fixed: Do not pre-calculate level scaling here
@@ -52,6 +58,10 @@ export class NPC {
 
         this.strategy = Math.random() > 0.5 ? 'aggressive' : 'farmer';
         if (this.class === 'pink') this.strategy = 'tactician';
+
+        // Learning System
+        this.battleTime = 0;
+        this.learningTimer = 0;
     }
 
     initModel() {
@@ -129,7 +139,8 @@ export class NPC {
         }
 
         // Visual Field (FOV Ring)
-        const fovRadius = 5 + (this.level * 1.0);
+        let fovRadius = 5 + (this.level * 1.0);
+        if (isNaN(fovRadius) || fovRadius <= 0.2) fovRadius = 6; // Safety fallback
         const fovGeo = new THREE.RingGeometry(fovRadius - 0.2, fovRadius, 32);
         const fovMat = new THREE.MeshBasicMaterial({
             color: color,
@@ -160,7 +171,9 @@ export class NPC {
     }
 
     applyForce(force) {
-        this.acceleration.add(force);
+        if (force && !isNaN(force.x) && !isNaN(force.y) && !isNaN(force.z)) {
+            this.acceleration.add(force);
+        }
     }
 
     seek(target) {
@@ -204,10 +217,36 @@ export class NPC {
         return steer;
     }
 
+    wander() {
+        // Randomly change wander angle
+        if (Math.random() < 0.05) {
+            this.wanderAngle = (this.wanderAngle || 0) + (Math.random() - 0.5) * 2.0;
+        }
+        const center = this.velocity.clone().normalize().multiplyScalar(2.0);
+        const offset = new THREE.Vector3(Math.cos(this.wanderAngle || 0), 0, Math.sin(this.wanderAngle || 0));
+        const force = center.add(offset).normalize().multiplyScalar(this.maxForce * 0.5);
+        return force;
+    }
+
     update(delta, others, playerPos, monsterPos, goldBossPos) {
         if (this.hp <= 0) return;
+        if (!delta || delta <= 0 || isNaN(delta)) delta = 0.016; // Safety fallback for delta
 
         this.acceleration.set(0, 0, 0); // Reset acceleration each frame
+
+        // Learning Logic: Learn every 10 seconds of survival
+        this.battleTime += delta;
+        this.learningTimer += delta;
+        if (this.learningTimer >= 10) {
+            this.learningTimer = 0;
+            // Learn: Improve Intelligence and Evasion
+            if (!this.stats.int) this.stats.int = 0;
+            this.stats.int += 1; // Smarter
+            this.stats.eva = Math.min(0.5, this.stats.eva + 0.005); // Harder to hit
+
+            // Visual feedback for learning (Subtle blue pulse)
+            // this.createAuraBurst(0x0000ff); // Optional, might be too noisy
+        }
 
         // Flocking Behaviors
         const separation = this.separate(others, playerPos, monsterPos, goldBossPos);
@@ -237,61 +276,44 @@ export class NPC {
                 }
             }
 
-            // Zombie AI: Follow Master
-            if (this.isZombie && this.masterId) {
-                const master = others.find(n => n.id === this.masterId);
-                if (master) {
-                    const distToMaster = this.position.distanceTo(master.position);
-                    if (distToMaster > 5) {
-                        this.targetPos = master.position.clone();
-                        // Add some randomness to not stack exactly on master
-                        this.targetPos.x += (Math.random() - 0.5) * 4;
-                        this.targetPos.z += (Math.random() - 0.5) * 4;
-                    }
+            // Default Wander
+            this.applyForce(this.wander());
+        }
 
-                    // Assist Master: Attack Master's Target
-                    const masterState = state.npcs.find(n => n.id === this.masterId);
-                    if (masterState && masterState.targetId) {
-                        // Logic handled in Combat.js or NPCManager, but we can hint target here if needed
-                        // For now, movement is key.
-                    }
+        // Zombie AI: Follow Master
+        if (this.isZombie && this.masterId) {
+            const master = others.find(n => n.id === this.masterId);
+            if (master) {
+                const distToMaster = this.position.distanceTo(master.position);
+                if (distToMaster > 5) {
+                    const followDir = master.position.clone().sub(this.position).normalize();
+                    this.applyForce(followDir.multiplyScalar(this.maxForce));
                 }
             }
-
-            // Wander behavior (if not following master or master dead)
-            if (!this.targetPos && Math.random() < 0.05) {
-                this.targetPos = new THREE.Vector3(
-                    (Math.random() - 0.5) * 80,
-                    1,
-                    (Math.random() - 0.5) * 80
-                );
-            }
         }
 
-        // --- Advanced AI: Self-Preservation ---
-        const npcState = state.npcs.find(n => n.id === this.id);
-        if (npcState && npcState.hp < npcState.maxHp * 0.3) {
-            // Low HP: Retreat to nearest Gold Well
-            const wells = this.scene.children.filter(c => c.type === 'Mesh' && c.geometry.type === 'TorusKnotGeometry' && c.material.color.getHex() === 0xffd700);
-            if (wells.length > 0) {
-                const nearestWell = wells.sort((a, b) => this.position.distanceTo(a.position) - this.position.distanceTo(b.position))[0];
-                this.targetPos = nearestWell.position.clone();
-            }
-        }
-
+        // Update Physics (FOR ALL NPCs)
         this.velocity.add(this.acceleration);
         this.velocity.clampLength(0, this.maxSpeed);
         this.position.add(this.velocity);
 
-        // Boundaries
-        this.position.x = THREE.MathUtils.clamp(this.position.x, -50, 50);
-        this.position.z = THREE.MathUtils.clamp(this.position.z, -50, 50);
+        // NaN Safety Check
+        if (isNaN(this.position.x) || isNaN(this.position.y) || isNaN(this.position.z)) {
+            this.position.set(0, 1, 0); // Reset to center
+            this.velocity.set(0, 0, 0);
+            this.acceleration.set(0, 0, 0);
+        }
+
+        // Boundary Check (Simple box)
+        const bound = 45;
+        this.position.x = THREE.MathUtils.clamp(this.position.x, -bound, bound);
+        this.position.z = THREE.MathUtils.clamp(this.position.z, -bound, bound);
 
         this.mesh.position.copy(this.position);
 
         // Growth Scaling (Clamped)
-        let targetScale = this.baseScale + (this.level - 1) * 0.05; // Increased growth factor (5% per level)
-        targetScale = Math.min(targetScale, 3.0); // Increased max size to 3x
+        let targetScale = this.baseScale + (this.level - 1) * 0.05;
+        targetScale = Math.min(targetScale, 3.0);
         this.mesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
 
         // Visual Animations
@@ -306,7 +328,7 @@ export class NPC {
         });
 
         // Update FOV Ring Visual
-        const fovScale = (this.class === 'purple') ? 20 : 1; // Scale is handled by geometry now
+        const fovScale = (this.class === 'purple') ? 20 : 1;
         this.fovRing.scale.setScalar(fovScale);
         this.fovRing.material.opacity = (this.class === 'purple') ? 0.05 : 0.15;
 
@@ -322,33 +344,14 @@ export class NPC {
         this.updateTrails(delta);
 
         // --- Advanced Graphics: Low HP Visuals ---
-        if (npcState && npcState.hp < npcState.maxHp * 0.25) {
-            if (Math.random() > 0.8) this.createSmokeBurst(0x555555); // Gray smoke for damage
+        if (this.hp < this.maxHp * 0.25) {
+            if (Math.random() > 0.8) this.createSmokeBurst(0x555555);
             this.body.material.emissiveIntensity = 2 + Math.sin(Date.now() * 0.01) * 2;
         }
-    }
 
-    updateVFX(delta) {
-        // Lightning cleanup
-        if (this.lightningLine && Date.now() > this.lightningExpiry) {
-            this.lightningLine.geometry.dispose();
-            this.lightningLine.material.dispose();
-            this.scene.remove(this.lightningLine);
-            this.lightningLine = null;
+        if (window.debugNPCs && this.id.includes('aliado_1')) {
+            console.log(`NPC ${this.id}: Pos(${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)}) Vel(${this.velocity.length().toFixed(3)}) Acc(${this.acceleration.length().toFixed(3)}) Delta(${delta})`);
         }
-
-        // Fire particles
-        this.fireParticles.forEach((p, i) => {
-            p.life -= delta;
-            p.mesh.position.add(p.vel);
-            p.mesh.scale.multiplyScalar(0.95);
-            if (p.life <= 0) {
-                p.mesh.geometry.dispose();
-                p.mesh.material.dispose();
-                this.scene.remove(p.mesh);
-                this.fireParticles.splice(i, 1);
-            }
-        });
     }
 
     performAttack(targetPos) {
@@ -426,6 +429,11 @@ export class NPC {
             this.createAuraBurst(0xffffff);
             this.body.scale.multiplyScalar(1.2);
             setTimeout(() => this.body.scale.setScalar(1), 500);
+
+            // Log Event
+            window.dispatchEvent(new CustomEvent('game-log', {
+                detail: { message: `${this.class.toUpperCase()} alcançou o Nível ${this.level}!`, type: 'levelup' }
+            }));
         }
     }
 

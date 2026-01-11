@@ -466,6 +466,15 @@ export function npcAttack(npcId, npcInstances) {
 
             // Visual Heal Effect
             if (npcInstance.createAuraBurst) npcInstance.createAuraBurst(0x00ff00);
+
+            // Log Event
+            let targetName = target.class ? target.class.toUpperCase() : target.id.toUpperCase();
+            if (target.id === 'void_boss') targetName = 'ENTIDADE DO VAZIO';
+            if (target.id === 'gold_boss') targetName = 'DEUSA DO OURO';
+
+            window.dispatchEvent(new CustomEvent('game-log', {
+                detail: { message: `${npc.class.toUpperCase()} eliminou ${targetName}!`, type: target.id.includes('boss') ? 'boss' : 'kill' }
+            }));
         }
     }
 

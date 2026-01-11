@@ -27,6 +27,7 @@ export class Monster {
     }
 
     seek(target) {
+        if (!target || isNaN(target.x)) return new THREE.Vector3();
         const desired = target.clone().sub(this.mesh.position);
         desired.normalize().multiplyScalar(this.maxSpeed);
         const steer = desired.sub(this.velocity);
@@ -97,6 +98,13 @@ export class Monster {
     }
 
     update(deltaTime, mouse, state) {
+        // NaN Safety Check
+        if (isNaN(this.mesh.position.x) || isNaN(this.mesh.position.y) || isNaN(this.mesh.position.z)) {
+            this.mesh.position.set(0, 5, 0);
+            this.velocity.set(0, 0, 0);
+            this.acceleration.set(0, 0, 0);
+        }
+
         this.time += deltaTime;
         if (mouse) this.mousePos.copy(mouse);
 
