@@ -471,9 +471,17 @@ export function npcAttack(npcId, npcInstances) {
             let targetName = target.class ? target.class.toUpperCase() : target.id.toUpperCase();
             if (target.id === 'void_boss') targetName = 'ENTIDADE DO VAZIO';
             if (target.id === 'gold_boss') targetName = 'DEUSA DO OURO';
+            const attackerName = npc.class ? npc.class.toUpperCase() : npc.id.toUpperCase();
 
             window.dispatchEvent(new CustomEvent('game-log', {
-                detail: { message: `${npc.class.toUpperCase()} eliminou ${targetName}!`, type: target.id.includes('boss') ? 'boss' : 'kill' }
+                detail: { 
+                    message: `${attackerName} eliminou ${targetName}!`, 
+                    type: target.id.includes('boss') ? 'boss' : 'kill',
+                    data: {
+                        npcName: targetName,
+                        killerName: attackerName
+                    }
+                }
             }));
         }
     }

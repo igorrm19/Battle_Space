@@ -6,6 +6,8 @@ import { state, updateState, resetMonster } from './State.js';
 import { playerAttack, monsterAttack, skillAttack, regenerateMana } from '../game/Combat.js';
 import { audioManager } from './Audio.js';
 import { NPCManager } from '../world/NPCManager.js';
+import { NPCPanelManager } from '../ui/NPCPanelManager.js';
+import { GameEventsLogger } from '../ui/GameEventsLogger.js';
 
 export class Game {
     constructor() {
@@ -15,6 +17,8 @@ export class Game {
         this.goldBoss = this.initGoldBoss();
         this.hud = new HUD(this.container);
         this.npcManager = new NPCManager(this.sceneManager.scene, this.hud);
+        this.npcPanelManager = new NPCPanelManager(this.hud, this.npcManager);
+        this.eventsLogger = new GameEventsLogger();
         this.clock = new THREE.Clock();
         this.mouse = new THREE.Vector2();
         this.playerPos = new THREE.Vector3(0, 0, 10);
@@ -49,6 +53,9 @@ export class Game {
             this.sceneManager.setFocus(() => this.npcManager.getTargetPosition(id));
         };
 
+        // Expose game instance for HUD button access
+        window.game = this;
+
         this.init();
         this.animate();
 
@@ -57,9 +64,14 @@ export class Game {
 
     init() {
         try {
+            // Initialize events logger
+            this.eventsLogger.init();
+            this.eventsLogger.logInfo('Jogo iniciado - Shadow Realm 3D');
+
             document.getElementById('save-btn').addEventListener('click', () => {
                 audioManager.resume();
                 this.hud.showNotification("JOGO SALVO!", "#00ff00");
+                this.eventsLogger.logInfo('Jogo salvo com sucesso');
             });
 
             // Auto-start NPCs and bosses
@@ -69,6 +81,60 @@ export class Game {
             this.monster.mesh.visible = true;
             resetMonster();
             audioManager.playStart();
+
+            // Log initial spawns
+            this.eventsLogger.logInfo('Entidade do Vazio surgiu');
+            this.eventsLogger.logInfo('Deusa do Ouro apareceu');
+
+            // Listen to existing game-log events and route to GameEventsLogger
+            window.addEventListener('game-log', (e) => {
+                const { message, type, data } = e.detail;
+                switch (type) {
+                    case 'kill':
+                    case 'death':
+                        if (data && data.npcName) {
+                            this.eventsLogger.logDeath(data.npcName, data.killerName);
+                        } else {
+                            // Fallback: try to parse message
+                            this.eventsLogger.addEvent(message, 'death');
+                        }
+                        break;
+                    case 'levelup':
+                        if (data && data.npcName && data.newLevel) {
+                            this.eventsLogger.logLevelUp(data.npcName, data.newLevel);
+                        } else {
+                            // Fallback: try to parse message
+                            this.eventsLogger.addEvent(message, 'levelup');
+                        }
+                        break;
+                    case 'spawn':
+                        if (data && data.npcName && data.faction) {
+                            this.eventsLogger.logSpawn(data.npcName, data.faction);
+                        } else {
+                            this.eventsLogger.addEvent(message, 'spawn');
+                        }
+                        break;
+                    case 'combat':
+                        if (data && data.attackerName && data.targetName && data.damage) {
+                            this.eventsLogger.logCombat(data.attackerName, data.targetName, data.damage);
+                        } else {
+                            this.eventsLogger.addEvent(message, 'combat');
+                        }
+                        break;
+                    case 'boss':
+                    case 'info':
+                        this.eventsLogger.logInfo(message);
+                        break;
+                    default:
+                        this.eventsLogger.logInfo(message);
+                }
+            });
+
+            // Start automatic NPC panel rotation
+            setTimeout(() => {
+                this.npcPanelManager.start();
+                console.log('[Game] NPC Panel auto-rotation started');
+            }, 2000); // Wait 2 seconds for NPCs to spawn
 
             window.addEventListener('keydown', (e) => this.keys[e.code] = true);
             window.addEventListener('keyup', (e) => this.keys[e.code] = false);
@@ -109,7 +175,11 @@ export class Game {
     }
 
     handleMouseClick(event) {
-        if (event.target.tagName !== 'CANVAS') return; // Ignore UI clicks
+        console.log('[Game] Mouse click detected, target:', event.target.tagName);
+        if (event.target.tagName !== 'CANVAS') {
+            console.log('[Game] Click ignored - not on canvas');
+            return; // Ignore UI clicks
+        }
 
         this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -117,17 +187,25 @@ export class Game {
 
         // Check for NPC clicks
         const npcMeshes = this.npcManager.npcs.map(n => n.mesh);
+        console.log('[Game] Total NPCs:', this.npcManager.npcs.length);
+        console.log('[Game] NPC meshes:', npcMeshes.length);
+
         const intersectsNPC = this.raycaster.intersectObjects(npcMeshes, true);
+        console.log('[Game] NPC intersections found:', intersectsNPC.length);
 
         if (intersectsNPC.length > 0) {
+            console.log('[Game] First intersection:', intersectsNPC[0]);
             // Find the root NPC object from the intersected mesh
             let obj = intersectsNPC[0].object;
             while (obj.parent && !this.npcManager.npcs.find(n => n.mesh === obj)) {
                 obj = obj.parent;
             }
             const npc = this.npcManager.npcs.find(n => n.mesh === obj);
+            console.log('[Game] Found NPC:', npc ? npc.id : 'null');
             if (npc) {
-                this.hud.showNPCInfo(npc);
+                console.log('[Game] Calling showNPCInfo for:', npc.id);
+                // Use NPCPanelManager to show NPC (resets rotation timer)
+                this.npcPanelManager.showNPC(npc);
                 // Set camera focus on this NPC
                 this.sceneManager.setFocus(() => npc.mesh.position);
                 return; // Stop processing if clicked on NPC
@@ -256,6 +334,9 @@ export class Game {
 
                 const safeDelta = (delta > 0 && delta < 0.5) ? delta : 0.016;
                 this.npcManager.update(safeDelta, this.playerPos);
+
+                // Update NPC panel auto-rotation
+                this.npcPanelManager.update(safeDelta);
 
                 if (this.goldBoss.visible) {
                     // Gold Boss Steering

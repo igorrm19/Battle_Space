@@ -400,17 +400,108 @@ export class NPC {
     }
 
     teleport() {
+        const oldPos = this.position.clone();
+        
+        // Departure effect - swirling particles (performance optimized)
+        const teleportParticles = CONSTANTS.VFX.MAX_TELEPORT_PARTICLES;
+        for (let i = 0; i < teleportParticles; i++) {
+            const particleGeo = new THREE.SphereGeometry(0.08, 8, 8);
+            const particleMat = new THREE.MeshBasicMaterial({
+                color: 0xaa00ff,
+                emissive: 0xff00ff,
+                emissiveIntensity: 3,
+                transparent: true,
+                opacity: 1
+            });
+            const particle = new THREE.Mesh(particleGeo, particleMat);
+            particle.position.copy(oldPos);
+            particle.position.add(new THREE.Vector3(
+                (Math.random() - 0.5) * 1.5,
+                (Math.random() - 0.5) * 1.5,
+                (Math.random() - 0.5) * 1.5
+            ));
+            this.scene.add(particle);
+            
+            const angle = (i / teleportParticles) * Math.PI * 2;
+            const radius = 0.5;
+            let particleLife = 0.8;
+            const particleAnimate = () => {
+                particleLife -= 0.04;
+                if (particleLife > 0) {
+                    const currentAngle = angle + (1 - particleLife) * Math.PI * 4;
+                    particle.position.set(
+                        oldPos.x + Math.cos(currentAngle) * radius * (1 - particleLife) * 3,
+                        oldPos.y + (1 - particleLife) * 2,
+                        oldPos.z + Math.sin(currentAngle) * radius * (1 - particleLife) * 3
+                    );
+                    particle.scale.setScalar(1 + (1 - particleLife) * 2);
+                    particle.material.opacity = particleLife;
+                    requestAnimationFrame(particleAnimate);
+                } else {
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                    this.scene.remove(particle);
+                }
+            };
+            particleAnimate();
+        }
+        
+        // Departure burst
         this.createAuraBurst(0xaa00ff);
+        
+        // Teleport to new position
         const range = 40;
-        this.position.set(
+        const newPos = new THREE.Vector3(
             (Math.random() - 0.5) * range,
             1,
             (Math.random() - 0.5) * range
         );
-        this.mesh.position.copy(this.position);
-        this.createAuraBurst(0xaa00ff);
+        this.position.copy(newPos);
+        this.mesh.position.copy(newPos);
+        
+        // Arrival effect - burst and particles
+        setTimeout(() => {
+            this.createAuraBurst(0xaa00ff);
+            
+            // Arrival particles (performance optimized)
+            for (let i = 0; i < teleportParticles; i++) {
+                const particleGeo = new THREE.SphereGeometry(0.08, 8, 8);
+                const particleMat = new THREE.MeshBasicMaterial({
+                    color: 0xaa00ff,
+                    emissive: 0xff00ff,
+                    emissiveIntensity: 3,
+                    transparent: true,
+                    opacity: 1
+                });
+                const particle = new THREE.Mesh(particleGeo, particleMat);
+                particle.position.copy(newPos);
+                this.scene.add(particle);
+                
+                const dir = new THREE.Vector3(
+                    (Math.random() - 0.5) * 2,
+                    (Math.random() - 0.5) * 2,
+                    (Math.random() - 0.5) * 2
+                ).normalize();
+                let particleLife = 0.6;
+                const particleAnimate = () => {
+                    particleLife -= 0.05;
+                    if (particleLife > 0) {
+                        particle.position.add(dir.clone().multiplyScalar(0.4));
+                        particle.scale.setScalar(1 + (1 - particleLife) * 3);
+                        particle.material.opacity = particleLife;
+                        requestAnimationFrame(particleAnimate);
+                    } else {
+                        particle.geometry.dispose();
+                        particle.material.dispose();
+                        this.scene.remove(particle);
+                    }
+                };
+                particleAnimate();
+            }
+        }, 100);
+        
         this.body.material.emissiveIntensity = 50;
-        setTimeout(() => this.body.material.emissiveIntensity = 1.0, 100);
+        setTimeout(() => this.body.material.emissiveIntensity = 1.0, 200);
     }
 
     gainXp(amount) {
@@ -431,39 +522,64 @@ export class NPC {
             setTimeout(() => this.body.scale.setScalar(1), 500);
 
             // Log Event
+            const npcName = this.class ? this.class.toUpperCase() : this.id.toUpperCase();
             window.dispatchEvent(new CustomEvent('game-log', {
-                detail: { message: `${this.class.toUpperCase()} alcançou o Nível ${this.level}!`, type: 'levelup' }
+                detail: { 
+                    message: `${npcName} alcançou o Nível ${this.level}!`, 
+                    type: 'levelup',
+                    data: {
+                        npcName: npcName,
+                        newLevel: this.level
+                    }
+                }
             }));
         }
     }
 
     createLightning(targetPos) {
         if (!targetPos) return;
-        for (let i = 0; i < 5; i++) { // Increased bolts
+        const startPos = this.position.clone().add(new THREE.Vector3(0, 1, 0));
+        
+        // Create main lightning bolts (performance optimized)
+        const boltCount = CONSTANTS.VFX.MAX_LIGHTNING_BOLTS;
+        for (let i = 0; i < boltCount; i++) {
             const points = [];
-            let current = this.position.clone().add(new THREE.Vector3(0, 1, 0));
-            points.push(current.clone());
-            const segments = 12; // More segments for jagged look
-            const step = targetPos.clone().sub(current).divideScalar(segments);
+            points.push(startPos.clone());
+            const segments = 20; // More segments for smoother but jagged look
+            const step = targetPos.clone().sub(startPos).divideScalar(segments);
             for (let j = 1; j < segments; j++) {
-                const p = current.clone().add(step.clone().multiplyScalar(j));
-                p.x += (Math.random() - 0.5) * 1.5; // More jitter
-                p.y += (Math.random() - 0.5) * 1.5;
-                p.z += (Math.random() - 0.5) * 1.5;
+                const p = startPos.clone().add(step.clone().multiplyScalar(j));
+                const jitter = (1 - j / segments) * 2.5; // Less jitter near target
+                p.x += (Math.random() - 0.5) * jitter;
+                p.y += (Math.random() - 0.5) * jitter;
+                p.z += (Math.random() - 0.5) * jitter;
                 points.push(p);
             }
             points.push(targetPos.clone());
+            
             const curve = new THREE.CatmullRomCurve3(points);
-            const geo = new THREE.TubeGeometry(curve, 20, 0.05, 8, false);
-            const mat = new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 1 }); // Brighter color
+            const thickness = 0.08 + Math.random() * 0.04;
+            const geo = new THREE.TubeGeometry(curve, 32, thickness, 8, false);
+            
+            // Brighter, more electric color with emissive
+            const mat = new THREE.MeshBasicMaterial({ 
+                color: 0xffffff,
+                emissive: 0xffffaa,
+                emissiveIntensity: 2.0,
+                transparent: true, 
+                opacity: 1 
+            });
             const bolt = new THREE.Mesh(geo, mat);
             this.scene.add(bolt);
-            let life = 1.0;
+            
+            let life = 0.3; // Faster, more flash-like
             const animate = () => {
-                life -= 0.1; // Faster fade
-                bolt.material.opacity = life;
-                if (life > 0) requestAnimationFrame(animate);
-                else {
+                life -= 0.15;
+                if (life > 0) {
+                    bolt.material.opacity = life;
+                    bolt.material.emissiveIntensity = life * 3;
+                    requestAnimationFrame(animate);
+                } else {
                     bolt.geometry.dispose();
                     bolt.material.dispose();
                     this.scene.remove(bolt);
@@ -471,83 +587,376 @@ export class NPC {
             };
             animate();
         }
-    }
-
-    createFire(targetPos) {
-        if (!targetPos) return;
-        for (let i = 0; i < 25; i++) { // More particles
-            const geo = new THREE.SphereGeometry(0.2 + Math.random() * 0.3, 8, 8);
-            const mat = new THREE.MeshBasicMaterial({
-                color: Math.random() > 0.3 ? 0xff4400 : 0xffff00, // More yellow for core
-                transparent: true,
-                opacity: 0.9
+        
+        // Add glowing particles at impact point (performance optimized)
+        const particleCount = CONSTANTS.VFX.MAX_LIGHTNING_PARTICLES;
+        for (let i = 0; i < particleCount; i++) {
+            const geo = new THREE.SphereGeometry(0.15, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ 
+                color: 0xffffff,
+                emissive: 0xffff00,
+                emissiveIntensity: 3,
+                transparent: true, 
+                opacity: 1 
             });
-            const p = new THREE.Mesh(geo, mat);
-            p.position.copy(this.position);
-            this.scene.add(p);
-            const dir = targetPos.clone().sub(this.position).normalize();
-            dir.x += (Math.random() - 0.5) * 0.6;
-            dir.y += (Math.random() - 0.5) * 0.6;
-            dir.z += (Math.random() - 0.5) * 0.6;
+            const particle = new THREE.Mesh(geo, mat);
+            particle.position.copy(targetPos);
+            particle.position.add(new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2
+            ));
+            this.scene.add(particle);
+            
+            const velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.3,
+                (Math.random() - 0.5) * 0.3,
+                (Math.random() - 0.5) * 0.3
+            );
             let life = 1.0;
             const animate = () => {
-                life -= 0.02;
+                life -= 0.08;
                 if (life > 0) {
-                    p.position.add(dir.clone().multiplyScalar(0.7));
-                    p.position.y += 0.02; // Rise effect
-                    p.scale.setScalar(life);
-                    p.material.opacity = life;
+                    particle.position.add(velocity);
+                    particle.scale.setScalar(life);
+                    particle.material.opacity = life;
                     requestAnimationFrame(animate);
                 } else {
-                    p.geometry.dispose();
-                    p.material.dispose();
-                    this.scene.remove(p);
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                    this.scene.remove(particle);
                 }
             };
             animate();
         }
+        
+        // Add electric glow sphere at impact
+        const glowGeo = new THREE.SphereGeometry(1.5, 16, 16);
+        const glowMat = new THREE.MeshBasicMaterial({ 
+            color: 0xffffaa,
+            transparent: true, 
+            opacity: 0.6 
+        });
+        const glow = new THREE.Mesh(glowGeo, glowMat);
+        glow.position.copy(targetPos);
+        this.scene.add(glow);
+        let glowLife = 0.5;
+        const animateGlow = () => {
+            glowLife -= 0.1;
+            if (glowLife > 0) {
+                glow.scale.setScalar(1 + (0.5 - glowLife) * 2);
+                glow.material.opacity = glowLife * 0.6;
+                requestAnimationFrame(animateGlow);
+            } else {
+                glow.geometry.dispose();
+                glow.material.dispose();
+                this.scene.remove(glow);
+            }
+        };
+        animateGlow();
+    }
+
+    createFire(targetPos) {
+        if (!targetPos) return;
+        const startPos = this.position.clone();
+        const dir = targetPos.clone().sub(startPos).normalize();
+        const distance = startPos.distanceTo(targetPos);
+        
+        // Create fireball with trail
+        const fireballGeo = new THREE.SphereGeometry(0.5, 16, 16);
+        const fireballMat = new THREE.MeshBasicMaterial({
+            color: 0xff8800,
+            emissive: 0xff4400,
+            emissiveIntensity: 3,
+            transparent: true,
+            opacity: 1
+        });
+        const fireball = new THREE.Mesh(fireballGeo, fireballMat);
+        fireball.position.copy(startPos);
+        this.scene.add(fireball);
+        
+        // Animate fireball trajectory
+        let fireballLife = distance / 0.8;
+        const fireballAnimate = () => {
+            fireballLife -= 0.016;
+            if (fireballLife > 0) {
+                const progress = 1 - (fireballLife / (distance / 0.8));
+                fireball.position.lerpVectors(startPos, targetPos, progress);
+                
+                // Add trailing particles
+                if (Math.random() > 0.7) {
+                    const trailGeo = new THREE.SphereGeometry(0.1, 8, 8);
+                    const trailMat = new THREE.MeshBasicMaterial({
+                        color: 0xff4400,
+                        emissive: 0xff8800,
+                        emissiveIntensity: 2,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    const trail = new THREE.Mesh(trailGeo, trailMat);
+                    trail.position.copy(fireball.position);
+                    this.scene.add(trail);
+                    let trailLife = 0.5;
+                    const trailAnimate = () => {
+                        trailLife -= 0.03;
+                        if (trailLife > 0) {
+                            trail.scale.setScalar(1 + (0.5 - trailLife) * 2);
+                            trail.material.opacity = trailLife;
+                            requestAnimationFrame(trailAnimate);
+                        } else {
+                            trail.geometry.dispose();
+                            trail.material.dispose();
+                            this.scene.remove(trail);
+                        }
+                    };
+                    trailAnimate();
+                }
+                requestAnimationFrame(fireballAnimate);
+            } else {
+                // Explosion effect at impact (performance optimized)
+                const explosionParticles = CONSTANTS.VFX.MAX_FIRE_PARTICLES;
+                for (let i = 0; i < explosionParticles; i++) {
+                    const geo = new THREE.SphereGeometry(0.15 + Math.random() * 0.25, 8, 8);
+                    const color = Math.random() > 0.5 ? 
+                        (Math.random() > 0.5 ? 0xff4400 : 0xffff00) : 
+                        (Math.random() > 0.5 ? 0xff0000 : 0xff8800);
+                    const mat = new THREE.MeshBasicMaterial({
+                        color: color,
+                        emissive: color,
+                        emissiveIntensity: 2,
+                        transparent: true,
+                        opacity: 1
+                    });
+                    const p = new THREE.Mesh(geo, mat);
+                    p.position.copy(targetPos);
+                    this.scene.add(p);
+                    const expDir = new THREE.Vector3(
+                        (Math.random() - 0.5) * 2,
+                        Math.random() * 1.5,
+                        (Math.random() - 0.5) * 2
+                    ).normalize();
+                    let life = 1.0;
+                    const animate = () => {
+                        life -= 0.025;
+                        if (life > 0) {
+                            p.position.add(expDir.clone().multiplyScalar(0.6));
+                            p.position.y -= 0.01; // Gravity effect
+                            p.scale.setScalar(1 + (1 - life) * 1.5);
+                            p.material.opacity = life;
+                            requestAnimationFrame(animate);
+                        } else {
+                            p.geometry.dispose();
+                            p.material.dispose();
+                            this.scene.remove(p);
+                        }
+                    };
+                    animate();
+                }
+                
+                // Smoke cloud (performance optimized)
+                const smokeParticles = CONSTANTS.VFX.MAX_FIRE_SMOKE;
+                for (let i = 0; i < smokeParticles; i++) {
+                    const smokeGeo = new THREE.SphereGeometry(0.2 + Math.random() * 0.3, 8, 8);
+                    const smokeMat = new THREE.MeshBasicMaterial({
+                        color: 0x333333,
+                        transparent: true,
+                        opacity: 0.4
+                    });
+                    const smoke = new THREE.Mesh(smokeGeo, smokeMat);
+                    smoke.position.copy(targetPos);
+                    smoke.position.add(new THREE.Vector3(
+                        (Math.random() - 0.5) * 3,
+                        Math.random() * 2,
+                        (Math.random() - 0.5) * 3
+                    ));
+                    this.scene.add(smoke);
+                    const smokeVel = new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.1,
+                        Math.random() * 0.15 + 0.05,
+                        (Math.random() - 0.5) * 0.1
+                    );
+                    let smokeLife = 1.5;
+                    const smokeAnimate = () => {
+                        smokeLife -= 0.015;
+                        if (smokeLife > 0) {
+                            smoke.position.add(smokeVel);
+                            smoke.scale.addScalar(0.03);
+                            smoke.material.opacity = smokeLife * 0.4;
+                            requestAnimationFrame(smokeAnimate);
+                        } else {
+                            smoke.geometry.dispose();
+                            smoke.material.dispose();
+                            this.scene.remove(smoke);
+                        }
+                    };
+                    smokeAnimate();
+                }
+                
+                // Explosion glow
+                const expGlowGeo = new THREE.SphereGeometry(2, 16, 16);
+                const expGlowMat = new THREE.MeshBasicMaterial({
+                    color: 0xff4400,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const expGlow = new THREE.Mesh(expGlowGeo, expGlowMat);
+                expGlow.position.copy(targetPos);
+                this.scene.add(expGlow);
+                let expGlowLife = 0.6;
+                const expGlowAnimate = () => {
+                    expGlowLife -= 0.1;
+                    if (expGlowLife > 0) {
+                        expGlow.scale.setScalar(1 + (0.6 - expGlowLife) * 2);
+                        expGlow.material.opacity = expGlowLife * 0.8;
+                        requestAnimationFrame(expGlowAnimate);
+                    } else {
+                        expGlow.geometry.dispose();
+                        expGlow.material.dispose();
+                        this.scene.remove(expGlow);
+                    }
+                };
+                expGlowAnimate();
+                
+                fireball.geometry.dispose();
+                fireball.material.dispose();
+                this.scene.remove(fireball);
+            }
+        };
+        fireballAnimate();
     }
 
     createGravityWave() {
-        const geo = new THREE.TorusGeometry(1, 0.05, 16, 100);
-        const mat = new THREE.MeshBasicMaterial({ color: 0x8b4513, transparent: true, opacity: 0.6 });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.copy(this.position);
-        mesh.rotation.x = Math.PI / 2;
-        this.scene.add(mesh);
-        let life = 1.0;
-        const animate = () => {
-            life -= 0.02;
-            if (life > 0) {
-                mesh.scale.setScalar(1 + (1 - life) * 20);
-                mesh.material.opacity = life * 0.6;
-                requestAnimationFrame(animate);
-            } else {
-                mesh.geometry.dispose();
-                mesh.material.dispose();
-                this.scene.remove(mesh);
-            }
-        };
-        animate();
+        // Multiple expanding rings for more impact
+        for (let ring = 0; ring < 3; ring++) {
+            const geo = new THREE.TorusGeometry(1 + ring * 0.3, 0.08, 32, 100);
+            const mat = new THREE.MeshBasicMaterial({ 
+                color: 0x8b4513,
+                emissive: 0x4400aa,
+                emissiveIntensity: 1.5,
+                transparent: true, 
+                opacity: 0.8 
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(this.position);
+            mesh.rotation.x = Math.PI / 2;
+            this.scene.add(mesh);
+            let life = 1.0;
+            const delay = ring * 0.05;
+            const animate = () => {
+                life -= 0.015;
+                if (life > 0) {
+                    const scale = 1 + (1 - life) * 25;
+                    mesh.scale.setScalar(scale);
+                    mesh.material.opacity = life * 0.8;
+                    mesh.material.emissiveIntensity = life * 1.5;
+                    requestAnimationFrame(animate);
+                } else {
+                    mesh.geometry.dispose();
+                    mesh.material.dispose();
+                    this.scene.remove(mesh);
+                }
+            };
+            setTimeout(() => animate(), delay * 1000);
+        }
     }
 
     createGravityWell(pos) {
-        const geo = new THREE.SphereGeometry(2, 32, 32);
-        const mat = new THREE.MeshPhongMaterial({ color: 0x000000, emissive: 0x4400ff, emissiveIntensity: 2, transparent: true, opacity: 0.5 });
-        const well = new THREE.Mesh(geo, mat);
-        well.position.copy(pos);
-        this.scene.add(well);
-        let life = 1.0;
+        // Enhanced gravity well with multiple layers
+        // Core black hole
+        const coreGeo = new THREE.SphereGeometry(1.5, 32, 32);
+        const coreMat = new THREE.MeshPhongMaterial({ 
+            color: 0x000000, 
+            emissive: 0x220044,
+            emissiveIntensity: 3,
+            transparent: true, 
+            opacity: 0.9 
+        });
+        const core = new THREE.Mesh(coreGeo, coreMat);
+        core.position.copy(pos);
+        this.scene.add(core);
+        
+        // Outer energy sphere
+        const outerGeo = new THREE.SphereGeometry(2.5, 32, 32);
+        const outerMat = new THREE.MeshBasicMaterial({ 
+            color: 0x4400ff,
+            emissive: 0x6600ff,
+            emissiveIntensity: 2,
+            transparent: true, 
+            opacity: 0.4,
+            wireframe: false
+        });
+        const outer = new THREE.Mesh(outerGeo, outerMat);
+        outer.position.copy(pos);
+        this.scene.add(outer);
+        
+        // Particle stream effect (particles being pulled in - performance optimized)
+        const gravityParticles = CONSTANTS.VFX.MAX_GRAVITY_PARTICLES;
+        for (let i = 0; i < gravityParticles; i++) {
+            const particleGeo = new THREE.SphereGeometry(0.1, 8, 8);
+            const particleMat = new THREE.MeshBasicMaterial({
+                color: 0x4400ff,
+                emissive: 0x6600ff,
+                emissiveIntensity: 2,
+                transparent: true,
+                opacity: 0.8
+            });
+            const particle = new THREE.Mesh(particleGeo, particleMat);
+            
+            // Start from random position around the well
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 5 + Math.random() * 3;
+            particle.position.set(
+                pos.x + Math.cos(angle) * radius,
+                pos.y + (Math.random() - 0.5) * 2,
+                pos.z + Math.sin(angle) * radius
+            );
+            this.scene.add(particle);
+            
+            let particleLife = 1.0;
+            const particleAnimate = () => {
+                particleLife -= 0.02;
+                if (particleLife > 0) {
+                    // Pull towards center
+                    const toCenter = pos.clone().sub(particle.position).normalize().multiplyScalar(0.3);
+                    particle.position.add(toCenter);
+                    particle.scale.setScalar(1 + (1 - particleLife) * 2);
+                    particle.material.opacity = particleLife * 0.8;
+                    requestAnimationFrame(particleAnimate);
+                } else {
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                    this.scene.remove(particle);
+                }
+            };
+            setTimeout(() => particleAnimate(), Math.random() * 200);
+        }
+        
+        // Animate core and outer sphere
+        let life = 2.0;
         const animate = () => {
-            life -= 0.01;
+            life -= 0.015;
             if (life > 0) {
-                well.scale.setScalar(Math.sin(Date.now() * 0.01) * 0.2 + 1);
-                well.material.opacity = life * 0.5;
+                const pulse = Math.sin(Date.now() * 0.005) * 0.15 + 1;
+                core.scale.setScalar(pulse);
+                outer.scale.setScalar(pulse * 1.2);
+                
+                core.material.opacity = life * 0.9;
+                outer.material.opacity = life * 0.4;
+                core.material.emissiveIntensity = life * 3;
+                outer.material.emissiveIntensity = life * 2;
+                
+                // Rotate the outer sphere
+                outer.rotation.y += 0.02;
+                core.rotation.x += 0.01;
+                
                 requestAnimationFrame(animate);
             } else {
-                well.geometry.dispose();
-                well.material.dispose();
-                this.scene.remove(well);
+                core.geometry.dispose();
+                core.material.dispose();
+                this.scene.remove(core);
+                outer.geometry.dispose();
+                outer.material.dispose();
+                this.scene.remove(outer);
             }
         };
         animate();
@@ -555,24 +964,146 @@ export class NPC {
 
     createVoidOrbe(targetPos) {
         if (!targetPos) return;
-        const geo = new THREE.SphereGeometry(0.8, 16, 16);
-        const mat = new THREE.MeshPhongMaterial({ color: 0xaa00ff, emissive: 0xaa00ff, emissiveIntensity: 5, transparent: true, opacity: 0.8 });
+        const startPos = this.position.clone();
+        const dir = targetPos.clone().sub(startPos).normalize();
+        const distance = startPos.distanceTo(targetPos);
+        
+        // Main void orb with pulsing energy
+        const geo = new THREE.SphereGeometry(0.9, 32, 32);
+        const mat = new THREE.MeshPhongMaterial({ 
+            color: 0xaa00ff, 
+            emissive: 0xff00ff,
+            emissiveIntensity: 4, 
+            transparent: true, 
+            opacity: 0.95 
+        });
         const orbe = new THREE.Mesh(geo, mat);
-        orbe.position.copy(this.position);
+        orbe.position.copy(startPos);
         this.scene.add(orbe);
-        const dir = targetPos.clone().sub(this.position).normalize();
-        let life = 1.0;
+        
+        // Outer aura ring
+        const auraGeo = new THREE.TorusGeometry(1.2, 0.1, 16, 32);
+        const auraMat = new THREE.MeshBasicMaterial({
+            color: 0xff00ff,
+            emissive: 0xff00ff,
+            emissiveIntensity: 3,
+            transparent: true,
+            opacity: 0.7
+        });
+        const aura = new THREE.Mesh(auraGeo, auraMat);
+        aura.position.copy(startPos);
+        aura.lookAt(targetPos);
+        this.scene.add(aura);
+        
+        // Distortion particles around the orb (performance optimized)
+        const particles = [];
+        const voidParticleCount = CONSTANTS.VFX.MAX_VOID_PARTICLES;
+        for (let i = 0; i < voidParticleCount; i++) {
+            const pGeo = new THREE.SphereGeometry(0.08, 8, 8);
+            const pMat = new THREE.MeshBasicMaterial({
+                color: 0xaa00ff,
+                emissive: 0xff00ff,
+                emissiveIntensity: 3,
+                transparent: true,
+                opacity: 0.8
+            });
+            const particle = new THREE.Mesh(pGeo, pMat);
+            const angle = (i / voidParticleCount) * Math.PI * 2;
+            const radius = 1.5;
+            particle.position.set(
+                startPos.x + Math.cos(angle) * radius,
+                startPos.y + (Math.random() - 0.5) * 0.5,
+                startPos.z + Math.sin(angle) * radius
+            );
+            this.scene.add(particle);
+            particles.push({ mesh: particle, angle, radius, offset: Math.random() * Math.PI * 2 });
+        }
+        
+        let life = distance / 0.5;
         const animate = () => {
-            life -= 0.01;
+            life -= 0.016;
             if (life > 0) {
-                orbe.position.add(dir.clone().multiplyScalar(0.4));
-                orbe.scale.setScalar(1 + Math.sin(Date.now() * 0.01) * 0.2);
-                orbe.material.opacity = life;
+                const progress = 1 - (life / (distance / 0.5));
+                const currentPos = startPos.clone().lerp(targetPos, progress);
+                orbe.position.copy(currentPos);
+                aura.position.copy(currentPos);
+                
+                // Pulsing effect
+                const pulse = 1 + Math.sin(Date.now() * 0.02) * 0.3;
+                orbe.scale.setScalar(pulse);
+                aura.scale.setScalar(pulse);
+                
+                // Rotate aura
+                aura.rotation.z += 0.05;
+                orbe.rotation.y += 0.03;
+                
+                // Animate particles
+                particles.forEach((p, i) => {
+                    const time = Date.now() * 0.001 + p.offset;
+                    const newRadius = 1.5 + Math.sin(time * 2) * 0.3;
+                    p.mesh.position.set(
+                        currentPos.x + Math.cos(p.angle + time) * newRadius,
+                        currentPos.y + Math.sin(time * 3 + p.offset) * 0.5,
+                        currentPos.z + Math.sin(p.angle + time) * newRadius
+                    );
+                    p.mesh.material.opacity = 0.8;
+                });
+                
                 requestAnimationFrame(animate);
             } else {
+                // Impact effect (performance optimized)
+                const impactParticles = CONSTANTS.VFX.MAX_VOID_PARTICLES * 2;
+                for (let i = 0; i < impactParticles; i++) {
+                    const impactGeo = new THREE.SphereGeometry(0.1, 8, 8);
+                    const impactMat = new THREE.MeshBasicMaterial({
+                        color: 0xff00ff,
+                        emissive: 0xff00ff,
+                        emissiveIntensity: 4,
+                        transparent: true,
+                        opacity: 1
+                    });
+                    const impact = new THREE.Mesh(impactGeo, impactMat);
+                    impact.position.copy(targetPos);
+                    impact.position.add(new THREE.Vector3(
+                        (Math.random() - 0.5) * 3,
+                        (Math.random() - 0.5) * 3,
+                        (Math.random() - 0.5) * 3
+                    ));
+                    this.scene.add(impact);
+                    const impactVel = new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.4,
+                        (Math.random() - 0.5) * 0.4,
+                        (Math.random() - 0.5) * 0.4
+                    );
+                    let impactLife = 1.0;
+                    const impactAnimate = () => {
+                        impactLife -= 0.05;
+                        if (impactLife > 0) {
+                            impact.position.add(impactVel);
+                            impact.scale.setScalar(1 + (1 - impactLife) * 3);
+                            impact.material.opacity = impactLife;
+                            requestAnimationFrame(impactAnimate);
+                        } else {
+                            impact.geometry.dispose();
+                            impact.material.dispose();
+                            this.scene.remove(impact);
+                        }
+                    };
+                    impactAnimate();
+                }
+                
+                // Cleanup
                 orbe.geometry.dispose();
                 orbe.material.dispose();
                 this.scene.remove(orbe);
+                aura.geometry.dispose();
+                aura.material.dispose();
+                this.scene.remove(aura);
+                particles.forEach(p => {
+                    p.mesh.geometry.dispose();
+                    p.mesh.material.dispose();
+                    this.scene.remove(p.mesh);
+                });
             }
         };
         animate();
@@ -580,25 +1111,60 @@ export class NPC {
 
     createIceShards(targetPos) {
         if (!targetPos) return;
-        for (let i = 0; i < 12; i++) {
-            const geo = new THREE.ConeGeometry(0.2, 0.8, 4);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2, transparent: true, opacity: 0.8 });
+        const startPos = this.position.clone();
+        const dir = targetPos.clone().sub(startPos).normalize();
+        
+        // Create ice shards with more variety (performance optimized)
+        const shardCount = CONSTANTS.VFX.MAX_ICE_SHARDS;
+        for (let i = 0; i < shardCount; i++) {
+            // Vary the geometry - mix of cones and octahedrons for variety
+            const useCone = Math.random() > 0.5;
+            const geo = useCone ? 
+                new THREE.ConeGeometry(0.15 + Math.random() * 0.15, 0.6 + Math.random() * 0.4, 6) :
+                new THREE.OctahedronGeometry(0.2 + Math.random() * 0.15, 0);
+            
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: 0x88eeff,
+                emissive: 0x00ffff,
+                emissiveIntensity: 2.5,
+                transparent: true, 
+                opacity: 0.9,
+                shininess: 100,
+                specular: 0xffffff
+            });
             const shard = new THREE.Mesh(geo, mat);
-            shard.position.copy(this.position);
+            shard.position.copy(startPos);
+            shard.position.add(new THREE.Vector3(
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5
+            ));
+            
+            // Orient towards target with random spread
             shard.lookAt(targetPos);
             shard.rotateX(Math.PI / 2);
+            shard.rotateX((Math.random() - 0.5) * 0.5);
+            shard.rotateY((Math.random() - 0.5) * 0.5);
+            shard.rotateZ((Math.random() - 0.5) * 0.5);
+            
             this.scene.add(shard);
-            const dir = targetPos.clone().sub(this.position).normalize();
-            dir.x += (Math.random() - 0.5) * 0.3;
-            dir.y += (Math.random() - 0.5) * 0.3;
-            dir.z += (Math.random() - 0.5) * 0.3;
+            const shardDir = dir.clone();
+            shardDir.x += (Math.random() - 0.5) * 0.4;
+            shardDir.y += (Math.random() - 0.5) * 0.4;
+            shardDir.z += (Math.random() - 0.5) * 0.4;
+            shardDir.normalize();
+            
             let life = 1.0;
+            const spinSpeed = 0.3 + Math.random() * 0.3;
             const animate = () => {
-                life -= 0.02;
+                life -= 0.025;
                 if (life > 0) {
-                    shard.position.add(dir.clone().multiplyScalar(0.8));
-                    shard.rotateY(0.2);
-                    shard.material.opacity = life;
+                    shard.position.add(shardDir.clone().multiplyScalar(1.0));
+                    // Realistic spinning
+                    shard.rotateX(spinSpeed);
+                    shard.rotateY(spinSpeed * 0.7);
+                    shard.rotateZ(spinSpeed * 0.5);
+                    shard.material.opacity = life * 0.9;
                     requestAnimationFrame(animate);
                 } else {
                     shard.geometry.dispose();
@@ -608,47 +1174,164 @@ export class NPC {
             };
             animate();
         }
+        
+        // Add ice particles trailing behind (performance optimized)
+        const iceParticleCount = CONSTANTS.VFX.MAX_ICE_PARTICLES;
+        for (let i = 0; i < iceParticleCount; i++) {
+            const particleGeo = new THREE.SphereGeometry(0.08, 8, 8);
+            const particleMat = new THREE.MeshBasicMaterial({
+                color: 0x88eeff,
+                emissive: 0x00ffff,
+                emissiveIntensity: 2,
+                transparent: true,
+                opacity: 0.7
+            });
+            const particle = new THREE.Mesh(particleGeo, particleMat);
+            particle.position.copy(startPos);
+            particle.position.add(new THREE.Vector3(
+                (Math.random() - 0.5) * 1,
+                (Math.random() - 0.5) * 1,
+                (Math.random() - 0.5) * 1
+            ));
+            this.scene.add(particle);
+            const particleDir = dir.clone();
+            particleDir.x += (Math.random() - 0.5) * 0.5;
+            particleDir.y += (Math.random() - 0.5) * 0.5;
+            particleDir.z += (Math.random() - 0.5) * 0.5;
+            particleDir.normalize();
+            let particleLife = 0.8;
+            const particleAnimate = () => {
+                particleLife -= 0.03;
+                if (particleLife > 0) {
+                    particle.position.add(particleDir.clone().multiplyScalar(0.7));
+                    particle.material.opacity = particleLife * 0.7;
+                    requestAnimationFrame(particleAnimate);
+                } else {
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                    this.scene.remove(particle);
+                }
+            };
+            setTimeout(() => particleAnimate(), Math.random() * 100);
+        }
     }
 
     createFreezeAura() {
-        const geo = new THREE.TorusGeometry(2, 0.05, 16, 100);
-        const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
-        const ring = new THREE.Mesh(geo, mat);
-        ring.rotation.x = Math.PI / 2;
-        ring.position.copy(this.position);
-        this.scene.add(ring);
-        let scale = 1.0;
-        const animate = () => {
-            scale += 0.1;
-            ring.scale.set(scale, scale, 1);
-            ring.material.opacity -= 0.02;
-            if (ring.material.opacity > 0) requestAnimationFrame(animate);
-            else {
-                ring.geometry.dispose();
-                ring.material.dispose();
-                this.scene.remove(ring);
-            }
-        };
-        animate();
+        // Multiple expanding rings for freezing effect
+        for (let ring = 0; ring < 4; ring++) {
+            const geo = new THREE.TorusGeometry(2 + ring * 0.3, 0.08, 32, 100);
+            const mat = new THREE.MeshBasicMaterial({ 
+                color: 0x00ffff,
+                emissive: 0x88eeff,
+                emissiveIntensity: 2,
+                transparent: true, 
+                opacity: 0.7 
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.rotation.x = Math.PI / 2;
+            mesh.position.copy(this.position);
+            this.scene.add(mesh);
+            let scale = 1.0;
+            const delay = ring * 0.03;
+            const animate = () => {
+                scale += 0.12;
+                mesh.scale.set(scale, scale, 1);
+                const opacity = Math.max(0, 0.7 - (scale - 1) * 0.15);
+                mesh.material.opacity = opacity;
+                if (opacity > 0) requestAnimationFrame(animate);
+                else {
+                    mesh.geometry.dispose();
+                    mesh.material.dispose();
+                    this.scene.remove(mesh);
+                }
+            };
+            setTimeout(() => animate(), delay * 1000);
+        }
+        
+        // Ice crystal burst at center
+        for (let i = 0; i < 12; i++) {
+            const crystalGeo = new THREE.ConeGeometry(0.1, 0.4, 6);
+            const crystalMat = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                emissive: 0x88eeff,
+                emissiveIntensity: 2,
+                transparent: true,
+                opacity: 0.9
+            });
+            const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+            crystal.position.copy(this.position);
+            const angle = (i / 12) * Math.PI * 2;
+            crystal.rotation.z = angle;
+            crystal.rotation.x = Math.PI / 2;
+            this.scene.add(crystal);
+            let crystalLife = 1.0;
+            const crystalAnimate = () => {
+                crystalLife -= 0.04;
+                if (crystalLife > 0) {
+                    crystal.scale.setScalar(1 + (1 - crystalLife) * 2);
+                    crystal.material.opacity = crystalLife * 0.9;
+                    crystal.rotation.y += 0.1;
+                    requestAnimationFrame(crystalAnimate);
+                } else {
+                    crystal.geometry.dispose();
+                    crystal.material.dispose();
+                    this.scene.remove(crystal);
+                }
+            };
+            crystalAnimate();
+        }
     }
 
     createAuraBurst(color) {
+        // Enhanced aura burst with multiple layers
         const geo = new THREE.SphereGeometry(0.5, 16, 16);
-        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 });
+        const mat = new THREE.MeshBasicMaterial({ 
+            color, 
+            emissive: color,
+            emissiveIntensity: 2,
+            transparent: true, 
+            opacity: 0.9 
+        });
         const burst = new THREE.Mesh(geo, mat);
         burst.position.copy(this.position);
         this.scene.add(burst);
+        
+        // Outer glow ring for more impact
+        const ringGeo = new THREE.RingGeometry(0.6, 1.0, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: color,
+            emissive: color,
+            emissiveIntensity: 1.5,
+            transparent: true,
+            opacity: 0.6,
+            side: THREE.DoubleSide
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.copy(this.position);
+        ring.rotation.x = -Math.PI / 2;
+        this.scene.add(ring);
+        
         let life = 1.0;
         const animate = () => {
-            life -= 0.05;
+            life -= 0.04;
             if (life > 0) {
-                burst.scale.setScalar(1 + (1 - life) * 10);
-                burst.material.opacity = life * 0.8;
+                const scale = 1 + (1 - life) * 12;
+                burst.scale.setScalar(scale);
+                burst.material.opacity = life * 0.9;
+                burst.material.emissiveIntensity = life * 2;
+                
+                ring.scale.setScalar(scale * 1.2);
+                ring.material.opacity = life * 0.6;
+                ring.rotation.z += 0.05;
+                
                 requestAnimationFrame(animate);
             } else {
                 burst.geometry.dispose();
                 burst.material.dispose();
                 this.scene.remove(burst);
+                ring.geometry.dispose();
+                ring.material.dispose();
+                this.scene.remove(ring);
             }
         };
         animate();

@@ -22,5 +22,20 @@ export const CONSTANTS = {
     BOSS_STATS: {
         void: { hp: 50000, atk: 200 },
         gold: { hp: 40000, atk: 150 }
+    },
+    // Performance limits for VFX
+    VFX: {
+        MAX_LIGHTNING_BOLTS: 6,        // Reduced from 8 for performance
+        MAX_LIGHTNING_PARTICLES: 12,    // Reduced from 15
+        MAX_FIRE_PARTICLES: 40,         // Reduced from 50
+        MAX_FIRE_SMOKE: 25,             // Reduced from 30
+        MAX_GRAVITY_PARTICLES: 30,      // Reduced from 40
+        MAX_VOID_PARTICLES: 15,         // Reduced from 20
+        MAX_ICE_SHARDS: 16,             // Reduced from 20
+        MAX_ICE_PARTICLES: 12,          // Reduced from 15
+        MAX_HEAL_PARTICLES: 25,         // Reduced from 30
+        MAX_TELEPORT_PARTICLES: 30,     // Reduced from 40
+        MAX_SIMULTANEOUS_EFFECTS: 10,   // Max effects running at once
+        EFFECT_CULL_DISTANCE: 50        // Don't render effects beyond this distance
     }
 };

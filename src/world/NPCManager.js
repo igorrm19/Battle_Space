@@ -48,6 +48,19 @@ export class NPCManager {
         this.npcs = configs.map(cfg => {
             const level = this.generateWeightedLevel();
             const npc = new NPC(this.scene, { ...cfg, level });
+            
+            // Log spawn event
+            const npcName = npc.class ? npc.class.toUpperCase() : npc.id.toUpperCase();
+            window.dispatchEvent(new CustomEvent('game-log', {
+                detail: {
+                    type: 'spawn',
+                    data: {
+                        npcName: npcName,
+                        faction: npc.faction
+                    }
+                }
+            }));
+            
             return npc;
         });
 
@@ -71,6 +84,19 @@ export class NPCManager {
         for (let i = this.npcs.length - 1; i >= 0; i--) {
             const n = this.npcs[i];
             if (n.hp <= 0) {
+                // Log death event (kills by NPCs are logged in Combat.js, 
+                // this catches other causes like player damage)
+                const npcName = n.class ? n.class.toUpperCase() : n.id.toUpperCase();
+                window.dispatchEvent(new CustomEvent('game-log', {
+                    detail: {
+                        type: 'death',
+                        data: {
+                            npcName: npcName,
+                            killerName: null
+                        }
+                    }
+                }));
+                
                 // Zombie Death Link
                 if (n.class === 'darkgreen') {
                     this.npcs.forEach(z => {
@@ -173,6 +199,18 @@ export class NPCManager {
 
         const config = { id, faction, class: cls, index: Math.floor(Math.random() * 10), level };
         const npc = new NPC(this.scene, config);
+
+        // Log spawn event
+        const npcName = npc.class ? npc.class.toUpperCase() : npc.id.toUpperCase();
+        window.dispatchEvent(new CustomEvent('game-log', {
+            detail: {
+                type: 'spawn',
+                data: {
+                    npcName: npcName,
+                    faction: npc.faction
+                }
+            }
+        }));
 
         const newNpcState = {
             id, hp: npc.maxHp, maxHp: npc.maxHp, faction, class: cls,
