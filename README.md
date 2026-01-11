@@ -6,6 +6,7 @@ Battle Aquarium é um simulador de batalha autônomo onde NPCs de diferentes cla
 
 O jogador atua como um espectador, funcionando como uma câmera fantasma, apenas observando o caos evoluir.
 
+
 ## Conceito
 
 * Simulação contínua e autônoma
@@ -16,6 +17,13 @@ O jogador atua como um espectador, funcionando como uma câmera fantasma, apenas
 ## Lógica do Jogo
 
 O jogo opera em um loop contínuo responsável por manter o mundo vivo e em constante evolução.
+
+
+
+<video src="./public/Screencast from 2026-01-11 01-21-50.webm" controls></video>
+
+
+
 
 ### Game Loop
 

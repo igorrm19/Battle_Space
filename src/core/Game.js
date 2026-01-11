@@ -137,7 +137,7 @@ export class Game {
         // Movement logic (if needed)
         const intersects = this.raycaster.intersectObject(this.sceneManager.floor);
         if (intersects.length > 0) {
-            this.hud.showNPCInfo(null); // Only deselect if clicking the floor
+            // Don't hide NPC info panel here - let user close it manually or by clicking another NPC
             this.clickTarget = intersects[0].point.clone();
             this.sceneManager.updateClickMarker(this.clickTarget);
         }

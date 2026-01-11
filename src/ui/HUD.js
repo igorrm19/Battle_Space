@@ -292,55 +292,108 @@ export class HUD {
             infoPanel = document.createElement('div');
             infoPanel.id = 'npc-info-panel';
             infoPanel.style.cssText = `
-                position: absolute;
-                top: 20px;
+                position: fixed;
+                top: 80px;
                 right: 20px;
-                width: 250px;
-                background: rgba(0, 0, 0, 0.85);
-                border: 2px solid #fff;
-                box-shadow: 0 0 15px rgba(0,0,0,0.8);
-                padding: 15px;
+                width: 280px;
+                background: rgba(0, 0, 0, 0.95);
+                border: 3px solid #fff;
+                box-shadow: 0 0 20px rgba(255,255,255,0.3), inset 0 0 20px rgba(0,0,0,0.5);
+                padding: 20px;
                 color: #fff;
                 font-family: 'Cinzel', serif;
-                z-index: 1000; /* High z-index */
-                pointer-events: none;
+                z-index: 10000;
+                pointer-events: auto;
                 display: none;
-                border-radius: 8px;
+                border-radius: 10px;
+                transition: all 0.3s ease;
             `;
-            document.body.appendChild(infoPanel); // Append to body to ensure visibility
+
+            // Add close button
+            const closeBtn = document.createElement('button');
+            closeBtn.innerHTML = '✕';
+            closeBtn.style.cssText = `
+                position: absolute;
+                top: 5px;
+                right: 5px;
+                background: rgba(255,0,0,0.3);
+                border: 1px solid #ff0000;
+                color: #fff;
+                width: 25px;
+                height: 25px;
+                border-radius: 50%;
+                cursor: pointer;
+                font-size: 16px;
+                line-height: 1;
+                transition: all 0.2s;
+            `;
+            closeBtn.onmouseover = () => closeBtn.style.background = 'rgba(255,0,0,0.6)';
+            closeBtn.onmouseout = () => closeBtn.style.background = 'rgba(255,0,0,0.3)';
+            closeBtn.onclick = () => this.showNPCInfo(null);
+            infoPanel.appendChild(closeBtn);
+
+            document.body.appendChild(infoPanel);
         }
 
         if (!npc) {
             infoPanel.style.display = 'none';
+            infoPanel.style.opacity = '0';
             return;
         }
 
         const color = this.getClassColor(npc.class);
         const factionColor = this.getFactionColor(npc.faction);
+        const strategyEmoji = npc.strategy === 'tactician' ? '🧠 Tático' : (npc.strategy === 'aggressive' ? '⚔️ Agressivo' : '🌾 Fazendeiro');
 
+        // Keep close button and update content
+        const closeBtn = infoPanel.querySelector('button');
         infoPanel.innerHTML = `
-            <h3 style="color: ${color}; margin: 0 0 10px 0; text-align: center; text-shadow: 0 0 5px ${color};">${npc.class.toUpperCase()}</h3>
-            <div style="margin-bottom: 5px;"><strong>Nível:</strong> ${npc.level}</div>
-            <div style="margin-bottom: 5px;"><strong>Facção:</strong> <span style="color: ${factionColor}">${npc.faction.toUpperCase()}</span></div>
-            <hr style="border-color: #555; margin: 10px 0;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9em;">
-                <div>⚔️ ATK: <span style="color:#ff8888">${Math.round(npc.stats.atk)}</span></div>
-                <div>🛡️ DEF: <span style="color:#8888ff">${Math.round(npc.stats.def)}</span></div>
-                <div>🧠 INT: <span style="color:#88ffff">${Math.round(npc.stats.int || 0)}</span></div>
-                <div>💨 EVA: <span style="color:#ffff88">${(npc.stats.eva * 100).toFixed(0)}%</span></div>
+            <h3 style="color: ${color}; margin: 0 0 10px 0; text-align: center; text-shadow: 0 0 10px ${color}; font-size: 1.3em;">${npc.id.toUpperCase()}</h3>
+            <div style="text-align: center; margin-bottom: 10px; font-size: 0.85em; color: #aaa;">${npc.class.toUpperCase()}</div>
+            <div style="margin-bottom: 8px; display: flex; justify-content: space-between;">
+                <span><strong>Nível:</strong> <span style="color: #ffff00">${npc.level}</span></span>
+                <span style="color: ${factionColor}; font-weight: bold;">${npc.faction.toUpperCase()}</span>
+            </div>
+            <div style="margin-bottom: 10px; text-align: center; background: rgba(255,255,255,0.1); padding: 5px; border-radius: 5px; font-size: 0.9em;">
+                ${strategyEmoji}
+            </div>
+            <hr style="border-color: ${color}; margin: 12px 0; opacity: 0.5;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.95em; margin-bottom: 12px;">
+                <div style="background: rgba(255,136,136,0.2); padding: 5px; border-radius: 5px; text-align: center;">
+                    <div style="font-size: 0.8em; color: #aaa;">⚔️ ATK</div>
+                    <div style="color:#ff8888; font-weight: bold;">${Math.round(npc.stats.atk)}</div>
+                </div>
+                <div style="background: rgba(136,136,255,0.2); padding: 5px; border-radius: 5px; text-align: center;">
+                    <div style="font-size: 0.8em; color: #aaa;">🛡️ DEF</div>
+                    <div style="color:#8888ff; font-weight: bold;">${Math.round(npc.stats.def)}</div>
+                </div>
+                <div style="background: rgba(136,255,255,0.2); padding: 5px; border-radius: 5px; text-align: center;">
+                    <div style="font-size: 0.8em; color: #aaa;">🧠 INT</div>
+                    <div style="color:#88ffff; font-weight: bold;">${Math.round(npc.stats.int || 0)}</div>
+                </div>
+                <div style="background: rgba(255,255,136,0.2); padding: 5px; border-radius: 5px; text-align: center;">
+                    <div style="font-size: 0.8em; color: #aaa;">💨 EVA</div>
+                    <div style="color:#ffff88; font-weight: bold;">${(npc.stats.eva * 100).toFixed(0)}%</div>
+                </div>
             </div>
             <div style="margin-top: 15px;">
-                <div style="display: flex; justify-content: space-between; font-size: 0.8em; margin-bottom: 2px;">
-                    <span>HP</span>
-                    <span>${Math.round(npc.hp)} / ${Math.round(npc.maxHp)}</span>
+                <div style="display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 3px;">
+                    <span style="color: #aaa;">HP</span>
+                    <span style="font-weight: bold;">${Math.round(npc.hp)} / ${Math.round(npc.maxHp)}</span>
                 </div>
-                <div style="width: 100%; height: 6px; background: #333; border-radius: 3px; overflow: hidden;">
-                    <div style="width: ${(npc.hp / npc.maxHp) * 100}%; height: 100%; background: #00ff00; box-shadow: 0 0 5px #00ff00;"></div>
+                <div style="width: 100%; height: 8px; background: #222; border-radius: 4px; overflow: hidden; border: 1px solid #444;">
+                    <div style="width: ${(npc.hp / npc.maxHp) * 100}%; height: 100%; background: linear-gradient(90deg, #00ff00, #00aa00); box-shadow: 0 0 10px #00ff00; transition: width 0.3s;"></div>
                 </div>
             </div>
         `;
+
+        // Re-add close button
+        if (closeBtn) infoPanel.appendChild(closeBtn);
+
         infoPanel.style.display = 'block';
+        infoPanel.style.opacity = '1';
         infoPanel.style.borderColor = color;
+        infoPanel.style.boxShadow = `0 0 20px ${color}, inset 0 0 20px rgba(0,0,0,0.5)`;
     }
 
     addLogMessage(message, type = 'info') {
