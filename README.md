@@ -20,7 +20,7 @@ O jogo opera em um loop contínuo responsável por manter o mundo vivo e em cons
 
 
 
-<img src="./public/Screencast from 2026-01-11 01-21-50.png" alt="Screencast from 2026-01-11 01-21-50">
+<img src="./public/img/Screenshot from 2026-01-11 13-50-19.png" alt="Screencast from 2026-01-11 01-21-50">
 
 
 
@@ -88,3 +88,7 @@ O jogador não possui corpo físico dentro do mundo.
 Battle Aquarium não possui condição de vitória.
 
 O foco está na observação de sistemas autônomos interagindo, criando hierarquias, conflitos e sobreviventes ao longo do tempo.
+
+
+<img src="./public/img/Screenshot from 2026-01-11 13-52-27.png" alt="Screencast from 2026-01-11 01-21-50">
+
