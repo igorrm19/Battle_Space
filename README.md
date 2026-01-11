@@ -21,7 +21,7 @@ O jogo opera em um loop contínuo responsável por manter o mundo vivo e em cons
 
 
 <video src="./public/Screencast from 2026-01-11 01-21-50.webm" controls></video>
-
+<img src="./public/Screencast from 2026-01-11 01-21-50.webm" alt="Screencast from 2026-01-11 01-21-50">
 
 
 
