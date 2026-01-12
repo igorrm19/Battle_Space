@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { state, updateState } from '../../core/State.js';
 import { dealDamage } from '../Combat.js';
+import { GAME_RULES } from '../../data/GameRules.js';
 
 /**
  * NPC Abilities Registry

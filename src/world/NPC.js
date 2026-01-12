@@ -14,6 +14,10 @@ export class NPC {
 
         this.mesh = new THREE.Group();
         this.initModel();
+        // Tag mesh with ID for instance lookups (used by abilities)
+        this.mesh.name = this.id;
+        this.mesh.userData = this.mesh.userData || {};
+        this.mesh.userData.npcId = this.id;
         this.scene.add(this.mesh);
 
         // Physics
