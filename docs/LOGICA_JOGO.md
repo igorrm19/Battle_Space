@@ -35,5 +35,6 @@ Existem duas entidades supremas no mapa:
 - O objetivo é apenas assistir e relaxar vendo as batalhas.
 
 ### 6. Efeitos Visuais e Suavidade
-- Para usuários sensíveis a tremores visuais, existe um controle global em `src/data/Constants.js` (`CONSTANTS.VFX.REDUCED_SHAKE`) que reduz amplitude e velocidade de partículas, rotações e flutuações de brilho.
-- As habilidades visuais críticas foram suavizadas: o **Void Orb** aplica dano de forma determinística (agora ignora defesa) e teve sua animação de partícula reduzia; o **Teleport** agora apresenta um efeito de chegada/partida menos agressivo e aciona um anel de "revelação global" (omniscience) como feedback visível.
+- Para usuários sensíveis a tremores visuais, existe um controle global em `src/data/Constants.js` (`CONSTANTS.VFX.REDUCED_SHAKE`) que reduz amplitude e velocidade de partículas, rotações e flutuações de brilho; este modo agora está ativado por padrão para uma experiência mais estável.
+- As habilidades visuais críticas foram suavizadas: o **Void Orb** aplica dano de forma determinística (agora ignora defesa) e teve sua animação de partícula reduzida; o **Teleport** agora apresenta um efeito de chegada/partida menos agressivo e aciona um anel de "revelação global" (omniscience) como feedback visível.
+- **Melhoria de Raios (Lightning)**: os raios agora usam material com emissive mais forte, jitter atenuado e um ponto de luz transitório no impacto para garantir que o efeito seja sempre visível.

@@ -40,6 +40,6 @@ export const CONSTANTS = {
 
         // VFX intensity controls (1.0 default). Set REDUCED_SHAKE=true to significantly dampen motion.
         INTENSITY_MULTIPLIER: 1.0,
-        REDUCED_SHAKE: false
+        REDUCED_SHAKE: true
     }
 };

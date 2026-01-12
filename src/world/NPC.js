@@ -739,6 +739,7 @@ export class NPC {
     createLightning(targetPos) {
         if (!targetPos) return;
         const startPos = this.position.clone().add(new THREE.Vector3(0, 1, 0));
+        const vfxFactor = this.getVfxFactor();
         
         // Create main lightning bolts (performance optimized)
         const boltCount = CONSTANTS.VFX.MAX_LIGHTNING_BOLTS;
@@ -749,7 +750,7 @@ export class NPC {
             const step = targetPos.clone().sub(startPos).divideScalar(segments);
             for (let j = 1; j < segments; j++) {
                 const p = startPos.clone().add(step.clone().multiplyScalar(j));
-                const jitter = (1 - j / segments) * 2.5; // Less jitter near target
+                const jitter = (1 - j / segments) * 2.0 * vfxFactor; // Slightly damped jitter
                 p.x += (Math.random() - 0.5) * jitter;
                 p.y += (Math.random() - 0.5) * jitter;
                 p.z += (Math.random() - 0.5) * jitter;
@@ -758,26 +759,36 @@ export class NPC {
             points.push(targetPos.clone());
             
             const curve = new THREE.CatmullRomCurve3(points);
-            const thickness = 0.08 + Math.random() * 0.04;
+            const thickness = (0.06 + Math.random() * 0.04) * (0.8 + 0.4 * vfxFactor);
             const geo = new THREE.TubeGeometry(curve, 32, thickness, 8, false);
             
-            // Brighter, more electric color with emissive
-            const mat = new THREE.MeshPhongMaterial({ 
+            // Brighter, more electric color with emissive (use Standard for consistent emissive handling)
+            const mat = new THREE.MeshStandardMaterial({ 
                 color: 0xffff00,
                 emissive: 0xffff66,
-                emissiveIntensity: 3.0,
+                emissiveIntensity: 6.0 * vfxFactor,
                 transparent: true, 
-                opacity: 1 
+                opacity: 1,
+                metalness: 0,
+                roughness: 0.2
             });
             const bolt = new THREE.Mesh(geo, mat);
             this.scene.add(bolt);
-            
-            let life = 0.3; // Faster, more flash-like
+
+            // Small transient point light at impact to make the hit obvious
+            try {
+                const flash = new THREE.PointLight(0xffffcc, 2.5 * vfxFactor, 12);
+                flash.position.copy(targetPos);
+                this.scene.add(flash);
+                setTimeout(() => { try { this.scene.remove(flash); } catch(e) {} }, 120);
+            } catch (e) { /* ignore for headless tests */ }
+
+            let life = 0.3 * (1 + vfxFactor * 0.5); // Slightly longer with vfx
             const animate = () => {
-                life -= 0.15;
+                life -= 0.12 * (0.8 + 0.2 * (1 - vfxFactor));
                 if (life > 0) {
                     bolt.material.opacity = life;
-                    bolt.material.emissiveIntensity = life * 3;
+                    bolt.material.emissiveIntensity = life * 6.0 * vfxFactor;
                     requestAnimationFrame(animate);
                 } else {
                     bolt.geometry.dispose();
@@ -792,7 +803,7 @@ export class NPC {
         try {
             console.debug(`[NPC:${this.id}] Lightning fired at`, targetPos);
             if (this.scene && this.scene.__manager && typeof this.scene.__manager.flashBloom === 'function') {
-                this.scene.__manager.flashBloom(2.5, 300);
+                this.scene.__manager.flashBloom(2.5 * vfxFactor, 300);
             }
         } catch (e) { /* ignore */ }
 
