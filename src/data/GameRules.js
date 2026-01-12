@@ -44,7 +44,7 @@ export const GAME_RULES = {
     YELLOW_SINGLE_SLOW_DURATION: 3000,                // Slow duration for single bolt (ms)
     YELLOW_MULTI_SLOW_DURATION: 4000,                 // Slow duration for multi bolts (ms)
     YELLOW_COLLISION_SPEED_DAMAGE_MULTIPLIER: 2.0,    // Damage = speed * multiplier when colliding
-    YELLOW_MIN_MOVEMENT_TO_RECHARGE: 0.05             // Minimum velocity to count as movement for recharge
+    YELLOW_MIN_MOVEMENT_TO_RECHARGE: 0.05,           // Minimum velocity to count as movement for recharge
     
     // Spawn rules
     MAX_NPCS: 16,                     // Maximum NPCs in battle
