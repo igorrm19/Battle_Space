@@ -155,6 +155,9 @@ export class SceneManager {
         const geo = new THREE.RingGeometry(0.5, 0.6, 32);
         const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0 });
         this.clickMarker = new THREE.Mesh(geo, mat);
+        this.clickMarker.rotation.x = -Math.PI / 2;
+        this.clickMarker.position.y = 0.1;
+        this.scene.add(this.clickMarker);
     }
 
     /** Temporarily flash bloom strength for dramatic effects */
@@ -171,10 +174,6 @@ export class SceneManager {
             else this.bloomPass.strength = orig;
         };
         requestAnimationFrame(animate);
-    }
-        this.clickMarker.rotation.x = -Math.PI / 2;
-        this.clickMarker.position.y = 0.1;
-        this.scene.add(this.clickMarker);
     }
 
     updateClickMarker(pos) {
