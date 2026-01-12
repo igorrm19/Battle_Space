@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { state } from '../core/State.js';
 import { CONSTANTS } from '../data/Constants.js';
 import { MathUtils } from '../utils/MathUtils.js';
+import { GAME_RULES } from '../data/GameRules.js';
+import { StatRules } from '../game/rules/StatRules.js';
 
 export class NPC {
     constructor(scene, config) {
@@ -18,11 +20,28 @@ export class NPC {
         this.position = new THREE.Vector3();
         this.velocity = new THREE.Vector3();
         this.acceleration = new THREE.Vector3();
-        this.maxSpeed = 0.08 + Math.random() * 0.02;
+        
+        // Yellow NPC has much higher speed
+        if (this.class === 'yellow') {
+            this.maxSpeed = GAME_RULES.YELLOW_BASE_SPEED + Math.random() * 0.02;
+            this.baseMaxSpeed = this.maxSpeed;
+        } else {
+            this.maxSpeed = 0.08 + Math.random() * 0.02;
+        }
         this.maxForce = 0.02;
         if (isNaN(this.maxSpeed) || this.maxSpeed <= 0) this.maxSpeed = 0.1;
         if (isNaN(this.maxForce) || this.maxForce <= 0) this.maxForce = 0.02;
         this.targetPos = null;
+        
+        // Yellow NPC specific: Momentum system
+        if (this.class === 'yellow') {
+            this.momentum = 1.0;
+            this.lastPosition = new THREE.Vector3();
+            this.totalDistanceTraveled = 0;
+            this.isCharging = false;
+            this.energy = GAME_RULES.YELLOW_BASE_ENERGY + (this.level * GAME_RULES.YELLOW_ENERGY_PER_LEVEL);
+            this.maxEnergy = this.energy;
+        }
 
         this.setInitialPosition(config.index || 0);
 
@@ -43,7 +62,7 @@ export class NPC {
             this.level = 1;
         }
         this.xp = 0;
-        this.maxXp = 100 * Math.pow(1.5, this.level - 1);
+        this.maxXp = StatRules.calculateMaxXP(this.level, this.class);
         this.baseScale = 1.0; // Fixed: Do not pre-calculate level scaling here
 
         // Level-based Stats
@@ -139,7 +158,13 @@ export class NPC {
         }
 
         // Visual Field (FOV Ring)
-        let fovRadius = 5 + (this.level * 1.0);
+        let fovRadius;
+        if (this.class === 'yellow') {
+            // Yellow NPC has reduced FOV, but increases when charging
+            fovRadius = this.isCharging ? GAME_RULES.YELLOW_CHARGE_FOV : GAME_RULES.YELLOW_BASE_FOV;
+        } else {
+            fovRadius = 5 + (this.level * 1.0);
+        }
         if (isNaN(fovRadius) || fovRadius <= 0.2) fovRadius = 6; // Safety fallback
         const fovGeo = new THREE.RingGeometry(fovRadius - 0.2, fovRadius, 32);
         const fovMat = new THREE.MeshBasicMaterial({
@@ -232,6 +257,16 @@ export class NPC {
         if (this.hp <= 0) return;
         if (!delta || delta <= 0 || isNaN(delta)) delta = 0.016; // Safety fallback for delta
 
+        // Freeze prevents movement
+        if (this.statusEffects?.includes('freeze')) {
+            this.velocity.set(0, 0, 0);
+            this.acceleration.set(0, 0, 0);
+            this.mesh.position.copy(this.position);
+            // Still update visual animations and VFX
+            this.updateVFX(delta);
+            return;
+        }
+
         this.acceleration.set(0, 0, 0); // Reset acceleration each frame
 
         // Learning Logic: Learn every 10 seconds of survival
@@ -292,6 +327,59 @@ export class NPC {
             }
         }
 
+        // Yellow NPC specific: Momentum and Energy system
+        if (this.class === 'yellow') {
+            // Calculate distance traveled
+            if (this.lastPosition) {
+                const distance = this.position.distanceTo(this.lastPosition);
+                this.totalDistanceTraveled += distance;
+                
+                // Increase momentum based on distance traveled
+                if (distance > 0.001) {
+                    this.momentum = Math.min(
+                        GAME_RULES.YELLOW_MOMENTUM_MAX,
+                        this.momentum + (distance * GAME_RULES.YELLOW_MOMENTUM_GAIN)
+                    );
+                }
+            }
+            this.lastPosition = this.position.clone();
+            
+            // Momentum decay
+            this.momentum *= GAME_RULES.YELLOW_MOMENTUM_DECAY;
+            if (this.momentum < 1.0) this.momentum = 1.0;
+            
+            // Apply momentum to speed
+            this.maxSpeed = this.baseMaxSpeed * this.momentum;
+            
+            // Energy system
+            if (!this.isCharging) {
+                // Energy drains over time
+                this.energy = Math.max(0, this.energy - (GAME_RULES.YELLOW_ENERGY_DRAIN * delta));
+                
+                // Recharge energy when at high speed
+                if (this.velocity.length() > GAME_RULES.YELLOW_SPEED_THRESHOLD) {
+                    this.energy = Math.min(
+                        this.maxEnergy,
+                        this.energy + (GAME_RULES.YELLOW_ENERGY_RECHARGE_SPEED * delta)
+                    );
+                }
+            }
+            
+            // Update FOV based on charging state
+            const fovRadius = this.isCharging ? GAME_RULES.YELLOW_CHARGE_FOV : GAME_RULES.YELLOW_BASE_FOV;
+            this.fovRing.scale.setScalar(fovRadius);
+            
+            // Visual effect for high momentum (yellow/lightning aura)
+            if (this.momentum > 1.5) {
+                const intensity = 1 + (this.momentum - 1.0) * 0.5;
+                this.body.material.emissiveIntensity = intensity * 3;
+                this.body.material.emissive.setHex(0xffff00);
+            } else {
+                this.body.material.emissiveIntensity = 1.0;
+                this.body.material.emissive.setHex(CONSTANTS.NPC_COLORS.yellow);
+            }
+        }
+        
         // Update Physics (FOR ALL NPCs)
         this.velocity.add(this.acceleration);
         this.velocity.clampLength(0, this.maxSpeed);
@@ -508,8 +596,14 @@ export class NPC {
         this.xp += amount;
         if (this.xp >= this.maxXp) {
             this.xp -= this.maxXp;
-            this.level = Math.min(50, this.level + 1);
-            this.maxXp *= 1.5;
+            this.level = Math.min(GAME_RULES.MAX_NPC_LEVEL, this.level + 1);
+            this.maxXp = StatRules.calculateMaxXP(this.level, this.class);
+            
+            // Update yellow NPC energy when leveling up
+            if (this.class === 'yellow') {
+                this.maxEnergy = GAME_RULES.YELLOW_BASE_ENERGY + (this.level * GAME_RULES.YELLOW_ENERGY_PER_LEVEL);
+                this.energy = this.maxEnergy; // Refill energy on level up
+            }
             this.maxHp += 100;
             this.hp = this.maxHp;
             this.stats.atk += 10;

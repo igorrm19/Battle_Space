@@ -125,9 +125,9 @@ export function regenerateMana(delta) {
         updateState({ mp: Math.min(state.maxMp, state.mp + state.mRegen * delta) });
     }
 
-    // Process DOTs (Burn)
+    // Process DOTs (Burn/Fire)
     state.npcs.forEach(npc => {
-        if (npc.statusEffects?.includes('burn') && npc.hp > 0) {
+        if (npc.statusEffects?.includes('fire') && npc.hp > 0) {
             npc.hp = Math.max(0, npc.hp - (10 * delta));
         }
     });
