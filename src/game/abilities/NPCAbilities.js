@@ -68,65 +68,32 @@ export const NPC_ABILITIES = {
     },
 
     yellow: (npc, target, npcInstance, targetInstance) => {
-        // Chain Lightning (Stun) - Jumps between 2-3 enemies
+        // New Lightning behavior: charge then fire single or multi bolts
+        // If already charging, do nothing and let NPC.update handle completion
+        if (npcInstance.isCharging) return { type: 'charging' };
+
         const dist = npcInstance.position.distanceTo(target.position || new THREE.Vector3());
+
+        // Decide between single or multi based on nearby enemies
+        const nearby = state.npcs.filter(n => n.faction !== npc.faction && n.hp > 0 && npcInstance.position.distanceTo(n.position || new THREE.Vector3()) < 12);
+
+        // Prefer multi if multiple enemies and enough energy
+        if (nearby.length >= 2 && npcInstance.energy >= GAME_RULES.YELLOW_CHARGE_COST_MULTI) {
+            npcInstance.beginCharge(null, 'multi');
+            return { type: 'charging', mode: 'multi' };
+        }
+
+        // Otherwise attempt single-target if within range and energy
+        if (dist < 12 && npcInstance.energy >= GAME_RULES.YELLOW_CHARGE_COST_SINGLE) {
+            npcInstance.beginCharge(target.id, 'single', targetInstance);
+            return { type: 'charging', mode: 'single', targetId: target.id };
+        }
+
+        // Fallback: small chain lightning if not enough energy
         if (dist < 12) {
-            const baseDmg = (npc.stats?.atk || 30) * 0.8;
-            const chainCount = 2 + Math.floor(Math.random() * 2); // 2-3 jumps
-            
-            const hitTargets = [target];
-            let currentPos = target.position || new THREE.Vector3();
-            let lastTarget = target;
-            
-            // Find chain targets (enemies within 8 units of current target)
-            for (let i = 1; i < chainCount; i++) {
-                const enemies = state.npcs.filter(n => 
-                    n.faction !== npc.faction && 
-                    n.hp > 0 && 
-                    !hitTargets.find(t => t.id === n.id)
-                );
-                
-                // Find nearest enemy to current position
-                let nearestEnemy = null;
-                let nearestDist = Infinity;
-                enemies.forEach(enemy => {
-                    const enemyPos = enemy.position || new THREE.Vector3();
-                    const d = currentPos.distanceTo(enemyPos);
-                    if (d < 8 && d < nearestDist) {
-                        nearestDist = d;
-                        nearestEnemy = enemy;
-                    }
-                });
-                
-                if (nearestEnemy) {
-                    hitTargets.push(nearestEnemy);
-                    currentPos = nearestEnemy.position || new THREE.Vector3();
-                    lastTarget = nearestEnemy;
-                } else {
-                    break; // No more targets in range
-                }
-            }
-            
-            // Deal damage to all chain targets (reduced for each jump)
-            hitTargets.forEach((hitTarget, index) => {
-                const dmg = baseDmg * Math.pow(0.7, index); // 30% reduction per jump
-                const targetNpc = state.npcs.find(n => n.id === hitTarget.id);
-                if (targetNpc) {
-                    dealDamage(hitTarget.id, dmg, false, npcInstance.scene.children);
-                    
-                    // Apply Stun with decreasing chance
-                    const stunChance = 0.7 - (index * 0.2);
-                    if (Math.random() < stunChance) {
-                        if (!targetNpc.statusEffects) targetNpc.statusEffects = [];
-                        if (!targetNpc.statusEffects.includes('stun')) {
-                            targetNpc.statusEffects.push('stun');
-                        }
-                    }
-                }
-            });
-            
-            updateState({ npcs: [...state.npcs] });
-            return { type: 'lightning', targetId: target.id, dmg: baseDmg, chainTargets: hitTargets.map(t => t.id) };
+            const baseDmg = (npc.stats?.atk || 30) * 0.5;
+            dealDamage(target.id, baseDmg, false, npcInstance.scene.children);
+            return { type: 'lightning', targetId: target.id, dmg: baseDmg };
         }
     },
 

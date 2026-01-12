@@ -327,7 +327,7 @@ export class NPC {
             }
         }
 
-        // Yellow NPC specific: Momentum and Energy system
+        // Yellow NPC specific: Momentum, Charge and Energy system
         if (this.class === 'yellow') {
             // Calculate distance traveled
             if (this.lastPosition) {
@@ -356,12 +356,20 @@ export class NPC {
                 // Energy drains over time
                 this.energy = Math.max(0, this.energy - (GAME_RULES.YELLOW_ENERGY_DRAIN * delta));
                 
-                // Recharge energy when at high speed
-                if (this.velocity.length() > GAME_RULES.YELLOW_SPEED_THRESHOLD) {
+                // Recharge energy when at high speed or if moving for a while
+                if (this.velocity.length() > GAME_RULES.YELLOW_MIN_MOVEMENT_TO_RECHARGE) {
                     this.energy = Math.min(
                         this.maxEnergy,
                         this.energy + (GAME_RULES.YELLOW_ENERGY_RECHARGE_SPEED * delta)
                     );
+                }
+            } else {
+                // While charging, lock movement slightly and increment timer
+                this.acceleration.multiplyScalar(0.1);
+                this.velocity.multiplyScalar(0.98);
+                this.chargeTimer += delta;
+                if (this.chargeTimer >= GAME_RULES.YELLOW_CHARGE_TIME) {
+                    this.completeCharge();
                 }
             }
             
@@ -375,8 +383,35 @@ export class NPC {
                 this.body.material.emissiveIntensity = intensity * 3;
                 this.body.material.emissive.setHex(0xffff00);
             } else {
-                this.body.material.emissiveIntensity = 1.0;
-                this.body.material.emissive.setHex(CONSTANTS.NPC_COLORS.yellow);
+                if (!this.isCharging) {
+                    this.body.material.emissiveIntensity = 1.0;
+                    this.body.material.emissive.setHex(CONSTANTS.NPC_COLORS.yellow);
+                }
+            }
+
+            // Collision Ram Damage: deal damage if colliding at high speed
+            if (!this._ramTimestamps) this._ramTimestamps = {};
+            const ramThreshold = 0.08;
+            const collisionRange = 1.2;
+            if (this.velocity.length() > ramThreshold) {
+                others.forEach(o => {
+                    if (o.id === this.id || o.hp <= 0) return;
+                    const d = this.position.distanceTo(o.position || new THREE.Vector3());
+                    if (d < collisionRange) {
+                        const last = this._ramTimestamps[o.id] || 0;
+                        const now = Date.now();
+                        if (now - last > 1000) { // 1s cooldown per target
+                            this._ramTimestamps[o.id] = now;
+                            const dmg = this.velocity.length() * GAME_RULES.YELLOW_COLLISION_SPEED_DAMAGE_MULTIPLIER * (this.stats?.atk || 30);
+                            dealDamage(o.id, dmg, false, []);
+                            // Knockback: push other away
+                            const dir = o.position ? o.position.clone().sub(this.position).normalize() : new THREE.Vector3(0,0,1);
+                            // Attempt to apply force to instance if available
+                            const inst = this.scene.children.find(c => c.id === o.id);
+                            if (inst && inst.applyForce) inst.applyForce(dir.multiplyScalar(0.5));
+                        }
+                    }
+                });
             }
         }
         
@@ -657,9 +692,9 @@ export class NPC {
             
             // Brighter, more electric color with emissive
             const mat = new THREE.MeshBasicMaterial({ 
-                color: 0xffffff,
-                emissive: 0xffffaa,
-                emissiveIntensity: 2.0,
+                color: 0xffff00,
+                emissive: 0xffff66,
+                emissiveIntensity: 3.0,
                 transparent: true, 
                 opacity: 1 
             });
@@ -748,6 +783,120 @@ export class NPC {
             }
         };
         animateGlow();
+    }
+
+    /** Begin charging lightning for a specific target or multi-target */
+    beginCharge(targetId = null, type = 'single', targetInstance = null) {
+        if (this.isCharging) return;
+        this.isCharging = true;
+        this.chargeTimer = 0;
+        this.chargeType = type; // 'single' | 'multi'
+        this.chargeTargetId = targetId;
+        this.chargeTargetInstance = targetInstance || null;
+        // Visual feedback for charging
+        this.body.material.emissive.setHex(0xffff00);
+        this.body.material.emissiveIntensity = 10;
+        // Expand fov visually
+        this.fovRing.scale.setScalar(GAME_RULES.YELLOW_CHARGE_FOV);
+    }
+
+    /** Apply slow to a target instance and schedule revert */
+    applySlowToInstance(targetInstance, slowMultiplier, durationMs) {
+        if (!targetInstance) return;
+        if (!targetInstance._originalMaxSpeed) targetInstance._originalMaxSpeed = targetInstance.maxSpeed || 0.1;
+        // If already slowed, refresh timer
+        if (targetInstance._slowTimeout) clearTimeout(targetInstance._slowTimeout);
+        targetInstance.maxSpeed = (targetInstance._originalMaxSpeed || 0.1) * slowMultiplier;
+        targetInstance._isSlowed = true;
+        targetInstance._slowTimeout = setTimeout(() => {
+            targetInstance.maxSpeed = targetInstance._originalMaxSpeed || targetInstance.maxSpeed;
+            targetInstance._isSlowed = false;
+            targetInstance._slowTimeout = null;
+        }, durationMs);
+    }
+
+    /** Complete a charge and fire single or multi lightning */
+    completeCharge() {
+        // Require energy to fire
+        const type = this.chargeType || 'single';
+        if (type === 'single') {
+            if (this.energy < GAME_RULES.YELLOW_CHARGE_COST_SINGLE) {
+                // Not enough energy: abort
+                this.isCharging = false;
+                this.chargeTimer = 0;
+                this.body.material.emissiveIntensity = 1;
+                this.fovRing.scale.setScalar(GAME_RULES.YELLOW_BASE_FOV);
+                return;
+            }
+            this.energy = Math.max(0, this.energy - GAME_RULES.YELLOW_CHARGE_COST_SINGLE);
+
+            // Resolve target position
+            let targetPos = null;
+            let targetId = this.chargeTargetId;
+            let targetInst = this.chargeTargetInstance;
+            if (targetInst && targetInst.position) targetPos = targetInst.position.clone();
+            else if (targetId) {
+                // Try to find in state.npcs
+                const t = state.npcs.find(n => n.id === targetId);
+                if (t && t.position) targetPos = t.position.clone();
+            }
+
+            if (targetPos) {
+                this.createLightning(targetPos);
+                // Apply damage and slow to the target via Combat
+                if (targetId) {
+                    dealDamage(targetId, GAME_RULES.YELLOW_SINGLE_DAMAGE, false, []);
+                    if (targetInst) this.applySlowToInstance(targetInst, GAME_RULES.YELLOW_SINGLE_SLOW_AMOUNT, GAME_RULES.YELLOW_SINGLE_SLOW_DURATION);
+                }
+            }
+        } else { // multi
+            if (this.energy < GAME_RULES.YELLOW_CHARGE_COST_MULTI) {
+                this.isCharging = false;
+                this.chargeTimer = 0;
+                this.body.material.emissiveIntensity = 1;
+                this.fovRing.scale.setScalar(GAME_RULES.YELLOW_BASE_FOV);
+                return;
+            }
+            this.energy = Math.max(0, this.energy - GAME_RULES.YELLOW_CHARGE_COST_MULTI);
+
+            // Find nearby enemies to target
+            const enemies = state.npcs.filter(n => n.faction !== this.faction && n.hp > 0);
+            // Sort by distance to this NPC instance (we have position)
+            enemies.sort((a, b) => {
+                const aPos = a.position || new THREE.Vector3();
+                const bPos = b.position || new THREE.Vector3();
+                const da = this.position.distanceTo(aPos);
+                const db = this.position.distanceTo(bPos);
+                return da - db;
+            });
+
+            const count = Math.min(GAME_RULES.YELLOW_MULTI_COUNT, enemies.length);
+            for (let i = 0; i < count; i++) {
+                const e = enemies[i];
+                const pos = e.position ? e.position.clone() : this.position.clone();
+                this.createLightning(pos);
+                // Apply damage and slow
+                dealDamage(e.id, GAME_RULES.YELLOW_MULTI_DAMAGE, false, []);
+                // Try to find instance in scene to apply slow visual
+                const inst = this.scene.children.find(c => c.id === e.id);
+                if (inst) this.applySlowToInstance(inst, GAME_RULES.YELLOW_MULTI_SLOW_AMOUNT, GAME_RULES.YELLOW_MULTI_SLOW_DURATION);
+            }
+        }
+
+        // Reset charging visuals
+        this.isCharging = false;
+        this.chargeTimer = 0;
+        this.chargeType = null;
+        this.chargeTargetId = null;
+        this.chargeTargetInstance = null;
+        this.body.material.emissiveIntensity = 1;
+        this.fovRing.scale.setScalar(GAME_RULES.YELLOW_BASE_FOV);
+    }
+
+    /** Create multi-target lightning (wrapper, optional use) */
+    createMultiLightning(targetPositions) {
+        if (!Array.isArray(targetPositions)) return;
+        targetPositions.forEach(pos => this.createLightning(pos));
     }
 
     createFire(targetPos) {
