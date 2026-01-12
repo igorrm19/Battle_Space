@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { state } from '../core/State.js';
+import { state, updateState } from '../core/State.js';
 import { CONSTANTS } from '../data/Constants.js';
 import { MathUtils } from '../utils/MathUtils.js';
 import { GAME_RULES } from '../data/GameRules.js';
 import { StatRules } from '../game/rules/StatRules.js';
+import { dealDamage } from '../game/Combat.js';
 
 export class NPC {
     constructor(scene, config) {
@@ -407,11 +408,16 @@ export class NPC {
                         if (now - last > 1000) { // 1s cooldown per target
                             this._ramTimestamps[o.id] = now;
                             const dmg = this.velocity.length() * GAME_RULES.YELLOW_COLLISION_SPEED_DAMAGE_MULTIPLIER * (this.stats?.atk || 30);
-                            dealDamage(o.id, dmg, false, []);
+                            // Apply damage to state
+                            const tobj = state.npcs.find(n => n.id === o.id);
+                            if (tobj) {
+                                tobj.hp = Math.max(0, tobj.hp - dmg);
+                                updateState({ npcs: [...state.npcs] });
+                            }
                             // Knockback: push other away
                             const dir = o.position ? o.position.clone().sub(this.position).normalize() : new THREE.Vector3(0,0,1);
                             // Attempt to apply force to instance if available
-                            const inst = this.scene.children.find(c => c.id === o.id);
+                            const inst = this.scene.children.find(c => c.name === o.id);
                             if (inst && inst.applyForce) inst.applyForce(dir.multiplyScalar(0.5));
                         }
                     }
@@ -695,7 +701,7 @@ export class NPC {
             const geo = new THREE.TubeGeometry(curve, 32, thickness, 8, false);
             
             // Brighter, more electric color with emissive
-            const mat = new THREE.MeshBasicMaterial({ 
+            const mat = new THREE.MeshPhongMaterial({ 
                 color: 0xffff00,
                 emissive: 0xffff66,
                 emissiveIntensity: 3.0,
@@ -725,7 +731,7 @@ export class NPC {
         const particleCount = CONSTANTS.VFX.MAX_LIGHTNING_PARTICLES;
         for (let i = 0; i < particleCount; i++) {
             const geo = new THREE.SphereGeometry(0.15, 8, 8);
-            const mat = new THREE.MeshBasicMaterial({ 
+            const mat = new THREE.MeshPhongMaterial({ 
                 color: 0xffffff,
                 emissive: 0xffff00,
                 emissiveIntensity: 3,
@@ -849,7 +855,12 @@ export class NPC {
                 this.createLightning(targetPos);
                 // Apply damage and slow to the target via Combat
                 if (targetId) {
-                    dealDamage(targetId, GAME_RULES.YELLOW_SINGLE_DAMAGE, false, []);
+                    // Apply damage directly to state to avoid circular import issues
+                    const targetState = state.npcs.find(n => n.id === targetId);
+                    if (targetState) {
+                        targetState.hp = Math.max(0, targetState.hp - GAME_RULES.YELLOW_SINGLE_DAMAGE);
+                        updateState({ npcs: [...state.npcs] });
+                    }
                     if (targetInst) this.applySlowToInstance(targetInst, GAME_RULES.YELLOW_SINGLE_SLOW_AMOUNT, GAME_RULES.YELLOW_SINGLE_SLOW_DURATION);
                 }
             }
@@ -880,9 +891,14 @@ export class NPC {
                 const pos = e.position ? e.position.clone() : this.position.clone();
                 this.createLightning(pos);
                 // Apply damage and slow
-                dealDamage(e.id, GAME_RULES.YELLOW_MULTI_DAMAGE, false, []);
+                // Apply damage directly to state (avoid circular import)
+                const t = state.npcs.find(n => n.id === e.id);
+                if (t) {
+                    t.hp = Math.max(0, t.hp - GAME_RULES.YELLOW_MULTI_DAMAGE);
+                    updateState({ npcs: [...state.npcs] });
+                }
                 // Try to find instance in scene to apply slow visual
-                const inst = this.scene.children.find(c => c.id === e.id);
+                const inst = this.scene.children.find(c => c.name === e.id);
                 if (inst) this.applySlowToInstance(inst, GAME_RULES.YELLOW_MULTI_SLOW_AMOUNT, GAME_RULES.YELLOW_MULTI_SLOW_DURATION);
             }
         }
