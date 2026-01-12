@@ -34,6 +34,17 @@ export const GAME_RULES = {
     YELLOW_MOMENTUM_MAX: 3.0,         // Maximum momentum multiplier
     YELLOW_CHARGE_COST_SINGLE: 50,    // Energy cost for single lightning
     YELLOW_CHARGE_COST_MULTI: 80,     // Energy cost for multi lightning
+    // Lightning ability balance
+    YELLOW_CHARGE_TIME: 2.0,                          // Seconds required to fully charge lightning
+    YELLOW_SINGLE_DAMAGE: 200,                        // Damage of single/primary lightning bolt
+    YELLOW_MULTI_DAMAGE: 40,                          // Damage per bolt in multi lightning
+    YELLOW_MULTI_COUNT: 6,                            // Number of bolts in multi lightning
+    YELLOW_SINGLE_SLOW_AMOUNT: 0.5,                   // Speed multiplier applied to target (0.5 = 50% speed)
+    YELLOW_MULTI_SLOW_AMOUNT: 0.7,                    // Speed multiplier for multi-target slow
+    YELLOW_SINGLE_SLOW_DURATION: 3000,                // Slow duration for single bolt (ms)
+    YELLOW_MULTI_SLOW_DURATION: 4000,                 // Slow duration for multi bolts (ms)
+    YELLOW_COLLISION_SPEED_DAMAGE_MULTIPLIER: 2.0,    // Damage = speed * multiplier when colliding
+    YELLOW_MIN_MOVEMENT_TO_RECHARGE: 0.05             // Minimum velocity to count as movement for recharge
     
     // Spawn rules
     MAX_NPCS: 16,                     // Maximum NPCs in battle
