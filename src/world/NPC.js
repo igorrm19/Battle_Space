@@ -46,6 +46,7 @@ export class NPC {
             this.isCharging = false;
             this.energy = GAME_RULES.YELLOW_BASE_ENERGY + (this.level * GAME_RULES.YELLOW_ENERGY_PER_LEVEL);
             this.maxEnergy = this.energy;
+            this.frenzyMultiplier = 1.0; // applied when no enemies seen for long
         }
 
         this.setInitialPosition(config.index || 0);
@@ -77,8 +78,18 @@ export class NPC {
             eva: 0.1 + (this.level * 0.01),
             int: (['purple', 'blue', 'green'].includes(config.class) ? 20 : 5) + (this.level * 5) // New Intelligence Stat
         };
-        this.maxHp = 500 + (this.level * 100);
-        this.hp = config.hp !== undefined ? config.hp : this.maxHp;
+        // Clamp stats to GAME_RULES.MAX_STAT_VALUE
+        this.stats.atk = Math.min(this.stats.atk, GAME_RULES.MAX_STAT_VALUE);
+        this.stats.def = Math.min(this.stats.def, GAME_RULES.MAX_STAT_VALUE);
+        this.stats.int = Math.min(this.stats.int, GAME_RULES.MAX_STAT_VALUE);
+        this.stats.eva = Math.min(this.stats.eva, GAME_RULES.MAX_EVASION);
+
+        this.maxHp = Math.min(500 + (this.level * 100), GAME_RULES.MAX_STAT_VALUE);
+        this.hp = config.hp !== undefined ? Math.min(config.hp, this.maxHp) : this.maxHp;
+
+        // Frenzy timer (no enemies seen recently)
+        this.timeSinceSeenEnemy = 0;
+        this.isFrenzy = false;
 
         this.strategy = Math.random() > 0.5 ? 'aggressive' : 'farmer';
         if (this.class === 'pink') this.strategy = 'tactician';
@@ -332,6 +343,27 @@ export class NPC {
             }
         }
 
+        // Frenzy behavior: if NPC sees no enemies for a while, accelerate (applies to all classes)
+        const nearbyEnemies = others.filter(n => n.faction !== this.faction && n.hp > 0 && this.position.distanceTo(n.position || new THREE.Vector3()) < 12);
+        if (nearbyEnemies.length === 0) {
+            this.timeSinceSeenEnemy = (this.timeSinceSeenEnemy || 0) + delta;
+            if (this.timeSinceSeenEnemy >= GAME_RULES.NO_ENEMY_ACCEL_TIME && !this.isFrenzy) {
+                this.isFrenzy = true;
+                // Use fringe multiplier instead of directly overriding maxSpeed so other systems don't override it
+                this.frenzyMultiplier = Math.min(GAME_RULES.NO_ENEMY_ACCEL_MULTIPLIER, GAME_RULES.NO_ENEMY_ACCEL_MAX_MULTIPLIER);
+                // Visual cue
+                try { this.body.material.emissive.setHex(0xffaa00); this.body.material.emissiveIntensity = 8; } catch (e) { }
+            }
+        } else {
+            if (this.isFrenzy) {
+                // Reset frenzy when seeing enemies again
+                this.isFrenzy = false;
+                this.frenzyMultiplier = 1.0;
+                try { this.body.material.emissiveIntensity = 1.0; this.body.material.emissive.setHex(CONSTANTS.NPC_COLORS[this.class] || 0xffffff); } catch (e) { }
+            }
+            this.timeSinceSeenEnemy = 0;
+        }
+
         // Yellow NPC specific: Momentum, Charge and Energy system
         if (this.class === 'yellow') {
             // Calculate distance traveled
@@ -353,8 +385,8 @@ export class NPC {
             this.momentum *= GAME_RULES.YELLOW_MOMENTUM_DECAY;
             if (this.momentum < 1.0) this.momentum = 1.0;
             
-            // Apply momentum to speed
-            this.maxSpeed = this.baseMaxSpeed * this.momentum;
+            // Apply momentum to speed (include potential frenzy multiplier)
+            this.maxSpeed = this.baseMaxSpeed * this.momentum * (this.frenzyMultiplier || 1.0);
             
             // Energy system
             if (!this.isCharging) {
@@ -727,6 +759,14 @@ export class NPC {
             animate();
         }
         
+        // Add a short bloom flash for visibility
+        try {
+            console.debug(`[NPC:${this.id}] Lightning fired at`, targetPos);
+            if (this.scene && this.scene.__manager && typeof this.scene.__manager.flashBloom === 'function') {
+                this.scene.__manager.flashBloom(2.5, 300);
+            }
+        } catch (e) { /* ignore */ }
+
         // Add glowing particles at impact point (performance optimized)
         const particleCount = CONSTANTS.VFX.MAX_LIGHTNING_PARTICLES;
         for (let i = 0; i < particleCount; i++) {

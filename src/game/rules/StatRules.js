@@ -21,10 +21,10 @@ export const StatRules = {
         const baseInt = intBase + (level * 5);
         
         return {
-            atk: baseAtk,
-            def: baseDef,
+            atk: Math.min(baseAtk, GAME_RULES.MAX_STAT_VALUE),
+            def: Math.min(baseDef, GAME_RULES.MAX_STAT_VALUE),
             eva: Math.min(baseEva, GAME_RULES.MAX_EVASION),
-            int: baseInt
+            int: Math.min(baseInt, GAME_RULES.MAX_STAT_VALUE)
         };
     },
 
@@ -34,7 +34,7 @@ export const StatRules = {
      * @returns {number} Maximum HP
      */
     calculateMaxHP(level) {
-        return 500 + (level * 100);
+        return Math.min(500 + (level * 100), GAME_RULES.MAX_STAT_VALUE);
     },
 
     /**

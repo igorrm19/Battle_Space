@@ -34,6 +34,12 @@ export const GAME_RULES = {
     YELLOW_MOMENTUM_MAX: 3.0,         // Maximum momentum multiplier
     YELLOW_CHARGE_COST_SINGLE: 50,    // Energy cost for single lightning
     YELLOW_CHARGE_COST_MULTI: 80,     // Energy cost for multi lightning
+
+    // Stat caps and roaming / frenzy behavior
+    MAX_STAT_VALUE: 1000,             // Maximum value for individual stats (atk/def/int/hp)
+    NO_ENEMY_ACCEL_TIME: 12.0,        // Seconds without seeing enemies to trigger frenzy
+    NO_ENEMY_ACCEL_MULTIPLIER: 4.0,   // Speed multiplier when in frenzy
+    NO_ENEMY_ACCEL_MAX_MULTIPLIER: 6.0, // Hard cap multiplier for extreme acceleration
     // Lightning ability balance
     YELLOW_CHARGE_TIME: 2.0,                          // Seconds required to fully charge lightning
     YELLOW_SINGLE_DAMAGE: 200,                        // Damage of single/primary lightning bolt

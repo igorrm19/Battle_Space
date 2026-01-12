@@ -78,4 +78,17 @@ describe('Yellow NPC - Charge and Lightning', () => {
         const damaged = [e1, e2s, e3s].filter(e => e && e.hp < e.maxHp).length;
         expect(damaged).toBeGreaterThanOrEqual(1);
     });
+
+    it('should enter frenzy (accelerate) after not seeing enemies for set time', () => {
+        // Remove all enemies from state
+        updateState({ npcs: state.npcs.filter(n => n.id === 'yellow_1') });
+        // Simulate updates without enemies for longer than NO_ENEMY_ACCEL_TIME
+        const total = GAME_RULES.NO_ENEMY_ACCEL_TIME + 0.5;
+        const steps = Math.ceil(total / 0.1);
+        for (let i = 0; i < steps; i++) {
+            yellowInstance.update(0.1, state.npcs, state.playerPos, state.monsterPos, state.goldBossPos);
+        }
+        expect(yellowInstance.isFrenzy).toBe(true);
+        expect(yellowInstance.maxSpeed).toBeGreaterThan(yellowInstance.baseMaxSpeed);
+    });
 });

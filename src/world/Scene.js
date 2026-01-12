@@ -104,11 +104,14 @@ export class SceneManager {
         this.composer = new EffectComposer(this.renderer);
         this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-        const bloomPass = new UnrealBloomPass(
+        this.bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             1.5, 0.4, 0.85 // Reduced strength for clarity
         );
-        this.composer.addPass(bloomPass);
+        this.composer.addPass(this.bloomPass);
+
+        // Expose manager reference on scene so other objects can access scene manager features
+        this.scene.__manager = this;
 
         this.chromaticAberration = new ShaderPass(ChromaticAberrationShader);
         this.composer.addPass(this.chromaticAberration);
@@ -132,12 +135,43 @@ export class SceneManager {
         this.environment = new EnvironmentManager(this.scene);
 
         window.addEventListener('resize', () => this.onWindowResize());
+
+        // Try to dynamically load additional post-processing passes if available (optional)
+        import('three/examples/jsm/postprocessing/AfterimagePass.js').then(mod => {
+            try {
+                const AfterimagePass = mod.AfterimagePass;
+                this.afterimagePass = new AfterimagePass(0.9);
+                this.composer.addPass(this.afterimagePass);
+                console.log('[Scene] AfterimagePass loaded');
+            } catch (e) {
+                console.warn('[Scene] AfterimagePass could not be initialized', e);
+            }
+        }).catch(() => {
+            // Not available; skip silently
+        });
     }
 
     initClickMarker() {
         const geo = new THREE.RingGeometry(0.5, 0.6, 32);
         const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0 });
         this.clickMarker = new THREE.Mesh(geo, mat);
+    }
+
+    /** Temporarily flash bloom strength for dramatic effects */
+    flashBloom(strength = 2.5, durationMs = 300) {
+        if (!this.bloomPass) return;
+        const orig = this.bloomPass.strength || 1.0;
+        this.bloomPass.strength = strength;
+        const start = performance.now();
+        const animate = (now) => {
+            const t = Math.min((now - start) / durationMs, 1);
+            // Smoothly damp from strength back to orig
+            this.bloomPass.strength = strength * (1 - t) + orig * t;
+            if (t < 1) requestAnimationFrame(animate);
+            else this.bloomPass.strength = orig;
+        };
+        requestAnimationFrame(animate);
+    }
         this.clickMarker.rotation.x = -Math.PI / 2;
         this.clickMarker.position.y = 0.1;
         this.scene.add(this.clickMarker);
