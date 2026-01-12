@@ -1,11 +1,30 @@
 export class AudioManager {
     constructor() {
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-        this.masterGain = this.ctx.createGain();
-        this.masterGain.connect(this.ctx.destination);
-        this.masterGain.gain.value = 0.3;
+        // Safe fallback for test environments without Web Audio API
+        const AudioCtor = (typeof window !== 'undefined') && (window.AudioContext || window.webkitAudioContext);
+        if (AudioCtor) {
+            this.ctx = new AudioCtor();
+            this.masterGain = this.ctx.createGain();
+            this.masterGain.connect(this.ctx.destination);
+            this.masterGain.gain.value = 0.3;
 
-        this.bgmStarted = false;
+            this.bgmStarted = false;
+        } else {
+            // Minimal no-op stub so tests can run headlessly
+            this.ctx = {
+                currentTime: 0,
+                state: 'running',
+                sampleRate: 44100,
+                destination: {},
+                createGain: () => ({ gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }),
+                createOscillator: () => ({ type: 'sine', frequency: { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} }, start() {}, stop() {}, connect() {} }),
+                createBiquadFilter: () => ({ type: 'lowpass', frequency: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }),
+                createBuffer: () => ({}),
+                createBufferSource: () => ({ buffer: null, start() {}, stop() {}, connect() {} }),
+            };
+            this.masterGain = { connect() {}, gain: { value: 0.3 } };
+            this.bgmStarted = true; // skip starting BGM in non-audio env
+        }
     }
 
     resume() {

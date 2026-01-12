@@ -81,6 +81,7 @@ Melhorias na apresentação e interatividade.
     - **Efeitos Visuais (VFX)**:
     - **Fogo**: Partículas mais densas e com movimento de subida realista.
     - **Raios**: Mais segmentos e "jitter" para parecer eletricidade real.
+    - **Redução de Tremores Visuais**: Adicionado `CONSTANTS.VFX.INTENSITY_MULTIPLIER` e `CONSTANTS.VFX.REDUCED_SHAKE` para reduzir amplitude/velocidade de partículas, rotações e pulsos quando necessário; Void Orb, Teleport e Aura bursts foram polidos para reduzir jitter e flashes agressivos quando o modo está ativado.
     - **Inteligência (INT)**: Novo atributo adicionado que diferencia classes mágicas (Magos) de guerreiras.
     - **Log de Batalha**:
         - Novo painel no canto inferior direito.

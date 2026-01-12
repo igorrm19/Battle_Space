@@ -99,6 +99,17 @@ export class NPC {
         this.learningTimer = 0;
     }
 
+    // VFX helpers: compute a per-instance factor that reduces shake/particle amplitude when a global reduced-shake toggle is enabled.
+    getVfxFactor() {
+        const base = (CONSTANTS.VFX.INTENSITY_MULTIPLIER !== undefined) ? CONSTANTS.VFX.INTENSITY_MULTIPLIER : 1.0;
+        return CONSTANTS.VFX.REDUCED_SHAKE ? Math.min(0.4, base) : base;
+    }
+
+    getVfxScale() {
+        const f = this.getVfxFactor();
+        return 0.5 + 0.5 * f; // Scales radii/speeds into the [0.5, 1.0] range conservatively
+    }
+
     initModel() {
         const color = this.isZombie ? 0x444444 : (CONSTANTS.NPC_COLORS[this.class] || 0xffffff);
 
@@ -528,24 +539,36 @@ export class NPC {
         setTimeout(() => this.mesh.position.copy(originalPos), 200);
     }
 
-    performAbility(type, targetPos) {
+    performAbility(type, targetPosOrMeta) {
+        // Accept either a Vector3 position or a meta object: { pos, targetId, dmg }
+        let pos = null, meta = null;
+        if (targetPosOrMeta && targetPosOrMeta.pos) {
+            pos = targetPosOrMeta.pos;
+            meta = targetPosOrMeta;
+        } else {
+            pos = targetPosOrMeta;
+        }
+
         if (type === 'heal') {
             this.body.material.emissiveIntensity = 10;
             this.createAuraBurst(0x00ff00);
             setTimeout(() => this.body.material.emissiveIntensity = 2, 500);
         } else if (type === 'lightning') {
-            this.createLightning(targetPos);
+            this.createLightning(pos);
         } else if (type === 'fire') {
-            this.createFire(targetPos);
+            this.createFire(pos);
         } else if (type === 'gravity') {
             this.createGravityWave();
-            if (targetPos) this.createGravityWell(targetPos);
+            if (pos) this.createGravityWell(pos);
         } else if (type === 'teleport') {
             this.teleport();
+            this.createGlobalReveal();
         } else if (type === 'void') {
-            this.createVoidOrbe(targetPos);
+            if (meta && meta.targetId) this.createVoidOrbe(pos, meta.targetId, meta.dmg);
+            else this.createVoidOrbe(pos);
+            this.createAuraBurst(0xaa00ff);
         } else if (type === 'freeze') {
-            this.createIceShards(targetPos);
+            this.createIceShards(pos);
             this.createFreezeAura();
         } else if (type === 'convert') {
             this.body.material.emissiveIntensity = 30;
@@ -566,24 +589,28 @@ export class NPC {
 
     teleport() {
         const oldPos = this.position.clone();
+        const vfxFactor = this.getVfxFactor();
+        const vfxScale = this.getVfxScale();
         
         // Departure effect - swirling particles (performance optimized)
         const teleportParticles = CONSTANTS.VFX.MAX_TELEPORT_PARTICLES;
         for (let i = 0; i < teleportParticles; i++) {
             const particleGeo = new THREE.SphereGeometry(0.08, 8, 8);
-            const particleMat = new THREE.MeshBasicMaterial({
+            const particleMat = new THREE.MeshStandardMaterial({
                 color: 0xaa00ff,
                 emissive: 0xff00ff,
-                emissiveIntensity: 3,
+                emissiveIntensity: 3 * vfxFactor,
                 transparent: true,
-                opacity: 1
+                opacity: 1 * vfxFactor,
+                metalness: 0,
+                roughness: 0.7
             });
             const particle = new THREE.Mesh(particleGeo, particleMat);
             particle.position.copy(oldPos);
             particle.position.add(new THREE.Vector3(
-                (Math.random() - 0.5) * 1.5,
-                (Math.random() - 0.5) * 1.5,
-                (Math.random() - 0.5) * 1.5
+                (Math.random() - 0.5) * 1.0 * vfxScale,
+                (Math.random() - 0.5) * 1.0 * vfxScale,
+                (Math.random() - 0.5) * 1.0 * vfxScale
             ));
             this.scene.add(particle);
             
@@ -631,29 +658,31 @@ export class NPC {
             // Arrival particles (performance optimized)
             for (let i = 0; i < teleportParticles; i++) {
                 const particleGeo = new THREE.SphereGeometry(0.08, 8, 8);
-                const particleMat = new THREE.MeshBasicMaterial({
+                const particleMat = new THREE.MeshStandardMaterial({
                     color: 0xaa00ff,
                     emissive: 0xff00ff,
                     emissiveIntensity: 3,
                     transparent: true,
-                    opacity: 1
+                    opacity: 1,
+                    metalness: 0,
+                    roughness: 0.7
                 });
                 const particle = new THREE.Mesh(particleGeo, particleMat);
                 particle.position.copy(newPos);
                 this.scene.add(particle);
                 
                 const dir = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2
+                    (Math.random() - 0.5) * 0.9 * vfxScale,
+                    (Math.random() - 0.5) * 0.9 * vfxScale,
+                    (Math.random() - 0.5) * 0.9 * vfxScale
                 ).normalize();
                 let particleLife = 0.6;
                 const particleAnimate = () => {
                     particleLife -= 0.05;
                     if (particleLife > 0) {
-                        particle.position.add(dir.clone().multiplyScalar(0.4));
-                        particle.scale.setScalar(1 + (1 - particleLife) * 3);
-                        particle.material.opacity = particleLife;
+                        particle.position.add(dir.clone().multiplyScalar(0.4 * vfxScale));
+                        particle.scale.setScalar(1 + (1 - particleLife) * 3 * vfxScale);
+                        particle.material.opacity = particleLife * vfxFactor;
                         requestAnimationFrame(particleAnimate);
                     } else {
                         particle.geometry.dispose();
@@ -1023,12 +1052,14 @@ export class NPC {
                     const color = Math.random() > 0.5 ? 
                         (Math.random() > 0.5 ? 0xff4400 : 0xffff00) : 
                         (Math.random() > 0.5 ? 0xff0000 : 0xff8800);
-                    const mat = new THREE.MeshBasicMaterial({
+                    const mat = new THREE.MeshStandardMaterial({
                         color: color,
                         emissive: color,
                         emissiveIntensity: 2,
                         transparent: true,
-                        opacity: 1
+                        opacity: 1,
+                        metalness: 0,
+                        roughness: 0.7
                     });
                     const p = new THREE.Mesh(geo, mat);
                     p.position.copy(targetPos);
@@ -1132,12 +1163,14 @@ export class NPC {
         // Multiple expanding rings for more impact
         for (let ring = 0; ring < 3; ring++) {
             const geo = new THREE.TorusGeometry(1 + ring * 0.3, 0.08, 32, 100);
-            const mat = new THREE.MeshBasicMaterial({ 
+            const mat = new THREE.MeshStandardMaterial({ 
                 color: 0x8b4513,
                 emissive: 0x4400aa,
                 emissiveIntensity: 1.5,
                 transparent: true, 
-                opacity: 0.8 
+                opacity: 0.8,
+                metalness: 0,
+                roughness: 0.9
             });
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.copy(this.position);
@@ -1180,13 +1213,15 @@ export class NPC {
         
         // Outer energy sphere
         const outerGeo = new THREE.SphereGeometry(2.5, 32, 32);
-        const outerMat = new THREE.MeshBasicMaterial({ 
+        const outerMat = new THREE.MeshStandardMaterial({ 
             color: 0x4400ff,
             emissive: 0x6600ff,
             emissiveIntensity: 2,
             transparent: true, 
             opacity: 0.4,
-            wireframe: false
+            wireframe: false,
+            metalness: 0,
+            roughness: 0.85
         });
         const outer = new THREE.Mesh(outerGeo, outerMat);
         outer.position.copy(pos);
@@ -1196,12 +1231,14 @@ export class NPC {
         const gravityParticles = CONSTANTS.VFX.MAX_GRAVITY_PARTICLES;
         for (let i = 0; i < gravityParticles; i++) {
             const particleGeo = new THREE.SphereGeometry(0.1, 8, 8);
-            const particleMat = new THREE.MeshBasicMaterial({
+            const particleMat = new THREE.MeshStandardMaterial({
                 color: 0x4400ff,
                 emissive: 0x6600ff,
                 emissiveIntensity: 2,
                 transparent: true,
-                opacity: 0.8
+                opacity: 0.8,
+                metalness: 0,
+                roughness: 0.8
             });
             const particle = new THREE.Mesh(particleGeo, particleMat);
             
@@ -1249,8 +1286,9 @@ export class NPC {
                 outer.material.emissiveIntensity = life * 2;
                 
                 // Rotate the outer sphere
-                outer.rotation.y += 0.02;
-                core.rotation.x += 0.01;
+                const _vfxFactor = this.getVfxFactor();
+                outer.rotation.y += 0.02 * _vfxFactor;
+                core.rotation.x += 0.01 * _vfxFactor;
                 
                 requestAnimationFrame(animate);
             } else {
@@ -1265,18 +1303,26 @@ export class NPC {
         animate();
     }
 
-    createVoidOrbe(targetPos) {
+    createVoidOrbe(targetPos, targetId = null, dmg = 0) {
         if (!targetPos) return;
         const startPos = this.position.clone();
         const dir = targetPos.clone().sub(startPos).normalize();
         const distance = startPos.distanceTo(targetPos);
-        
+
+        const vfxFactor = this.getVfxFactor();
+        const vfxScale = this.getVfxScale();
+
+        // Immediately apply damage (deterministic + test-friendly)
+        if (targetId && dmg > 0) {
+            try { dealDamage(targetId, dmg, true, this.scene.children, true); } catch (e) { console.error('[NPC] void damage error', e); }
+        }
+
         // Main void orb with pulsing energy
         const geo = new THREE.SphereGeometry(0.9, 32, 32);
         const mat = new THREE.MeshPhongMaterial({ 
             color: 0xaa00ff, 
             emissive: 0xff00ff,
-            emissiveIntensity: 4, 
+            emissiveIntensity: 4 * (this.getVfxFactor()), 
             transparent: true, 
             opacity: 0.95 
         });
@@ -1286,12 +1332,14 @@ export class NPC {
         
         // Outer aura ring
         const auraGeo = new THREE.TorusGeometry(1.2, 0.1, 16, 32);
-        const auraMat = new THREE.MeshBasicMaterial({
+        const auraMat = new THREE.MeshStandardMaterial({
             color: 0xff00ff,
             emissive: 0xff00ff,
             emissiveIntensity: 3,
             transparent: true,
-            opacity: 0.7
+            opacity: 0.7,
+            metalness: 0,
+            roughness: 0.7
         });
         const aura = new THREE.Mesh(auraGeo, auraMat);
         aura.position.copy(startPos);
@@ -1303,12 +1351,14 @@ export class NPC {
         const voidParticleCount = CONSTANTS.VFX.MAX_VOID_PARTICLES;
         for (let i = 0; i < voidParticleCount; i++) {
             const pGeo = new THREE.SphereGeometry(0.08, 8, 8);
-            const pMat = new THREE.MeshBasicMaterial({
+            const pMat = new THREE.MeshStandardMaterial({
                 color: 0xaa00ff,
                 emissive: 0xff00ff,
                 emissiveIntensity: 3,
                 transparent: true,
-                opacity: 0.8
+                opacity: 0.8,
+                metalness: 0,
+                roughness: 0.8
             });
             const particle = new THREE.Mesh(pGeo, pMat);
             const angle = (i / voidParticleCount) * Math.PI * 2;
@@ -1331,25 +1381,25 @@ export class NPC {
                 orbe.position.copy(currentPos);
                 aura.position.copy(currentPos);
                 
-                // Pulsing effect
-                const pulse = 1 + Math.sin(Date.now() * 0.02) * 0.3;
+                // Pulsing effect (damped by VFX factor)
+                const pulse = 1 + Math.sin(Date.now() * 0.02) * 0.3 * vfxFactor;
                 orbe.scale.setScalar(pulse);
                 aura.scale.setScalar(pulse);
                 
-                // Rotate aura
-                aura.rotation.z += 0.05;
-                orbe.rotation.y += 0.03;
+                // Rotate aura (damped)
+                aura.rotation.z += 0.05 * vfxFactor;
+                orbe.rotation.y += 0.03 * vfxFactor;
                 
-                // Animate particles
+                // Animate particles (reduced radius & vertical jitter)
                 particles.forEach((p, i) => {
                     const time = Date.now() * 0.001 + p.offset;
-                    const newRadius = 1.5 + Math.sin(time * 2) * 0.3;
+                    const newRadius = (1.5 * vfxScale) + Math.sin(time * 2) * (0.3 * vfxFactor);
                     p.mesh.position.set(
                         currentPos.x + Math.cos(p.angle + time) * newRadius,
-                        currentPos.y + Math.sin(time * 3 + p.offset) * 0.5,
+                        currentPos.y + Math.sin(time * 3 + p.offset) * (0.5 * vfxScale),
                         currentPos.z + Math.sin(p.angle + time) * newRadius
                     );
-                    p.mesh.material.opacity = 0.8;
+                    p.mesh.material.opacity = 0.8 * vfxFactor;
                 });
                 
                 requestAnimationFrame(animate);
@@ -1358,12 +1408,14 @@ export class NPC {
                 const impactParticles = CONSTANTS.VFX.MAX_VOID_PARTICLES * 2;
                 for (let i = 0; i < impactParticles; i++) {
                     const impactGeo = new THREE.SphereGeometry(0.1, 8, 8);
-                    const impactMat = new THREE.MeshBasicMaterial({
+                    const impactMat = new THREE.MeshStandardMaterial({
                         color: 0xff00ff,
                         emissive: 0xff00ff,
                         emissiveIntensity: 4,
                         transparent: true,
-                        opacity: 1
+                        opacity: 1,
+                        metalness: 0,
+                        roughness: 0.6
                     });
                     const impact = new THREE.Mesh(impactGeo, impactMat);
                     impact.position.copy(targetPos);
@@ -1374,9 +1426,9 @@ export class NPC {
                     ));
                     this.scene.add(impact);
                     const impactVel = new THREE.Vector3(
-                        (Math.random() - 0.5) * 0.4,
-                        (Math.random() - 0.5) * 0.4,
-                        (Math.random() - 0.5) * 0.4
+                        (Math.random() - 0.5) * 0.4 * vfxScale,
+                        (Math.random() - 0.5) * 0.4 * vfxScale,
+                        (Math.random() - 0.5) * 0.4 * vfxScale
                     );
                     let impactLife = 1.0;
                     const impactAnimate = () => {
@@ -1573,7 +1625,7 @@ export class NPC {
                 if (crystalLife > 0) {
                     crystal.scale.setScalar(1 + (1 - crystalLife) * 2);
                     crystal.material.opacity = crystalLife * 0.9;
-                    crystal.rotation.y += 0.1;
+                    crystal.rotation.y += 0.1 * this.getVfxFactor();
                     requestAnimationFrame(crystalAnimate);
                 } else {
                     crystal.geometry.dispose();
@@ -1588,12 +1640,14 @@ export class NPC {
     createAuraBurst(color) {
         // Enhanced aura burst with multiple layers
         const geo = new THREE.SphereGeometry(0.5, 16, 16);
-        const mat = new THREE.MeshBasicMaterial({ 
+        const mat = new THREE.MeshStandardMaterial({ 
             color, 
             emissive: color,
             emissiveIntensity: 2,
             transparent: true, 
-            opacity: 0.9 
+            opacity: 0.9,
+            metalness: 0,
+            roughness: 0.6
         });
         const burst = new THREE.Mesh(geo, mat);
         burst.position.copy(this.position);
@@ -1601,13 +1655,15 @@ export class NPC {
         
         // Outer glow ring for more impact
         const ringGeo = new THREE.RingGeometry(0.6, 1.0, 32);
-        const ringMat = new THREE.MeshBasicMaterial({
+        const ringMat = new THREE.MeshStandardMaterial({
             color: color,
             emissive: color,
             emissiveIntensity: 1.5,
             transparent: true,
             opacity: 0.6,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
+            metalness: 0,
+            roughness: 0.8
         });
         const ring = new THREE.Mesh(ringGeo, ringMat);
         ring.position.copy(this.position);
@@ -1615,23 +1671,51 @@ export class NPC {
         this.scene.add(ring);
         
         let life = 1.0;
+        const vfxFactor = this.getVfxFactor();
         const animate = () => {
             life -= 0.04;
             if (life > 0) {
-                const scale = 1 + (1 - life) * 12;
+                const scale = 1 + (1 - life) * 12 * vfxFactor; // damp growth when reduced
                 burst.scale.setScalar(scale);
-                burst.material.opacity = life * 0.9;
-                burst.material.emissiveIntensity = life * 2;
+                burst.material.opacity = life * 0.9 * Math.min(1, 0.8 + 0.2 * vfxFactor);
+                burst.material.emissiveIntensity = life * 2 * vfxFactor;
                 
-                ring.scale.setScalar(scale * 1.2);
-                ring.material.opacity = life * 0.6;
-                ring.rotation.z += 0.05;
+                ring.scale.setScalar(scale * (1.2 * vfxFactor + (1 - vfxFactor)));
+                ring.material.opacity = life * 0.6 * vfxFactor;
+                ring.rotation.z += 0.05 * vfxFactor;
                 
                 requestAnimationFrame(animate);
             } else {
                 burst.geometry.dispose();
                 burst.material.dispose();
                 this.scene.remove(burst);
+                ring.geometry.dispose();
+                ring.material.dispose();
+                this.scene.remove(ring);
+            }
+        };
+        animate();
+    }
+
+    createGlobalReveal() {
+        // Large transparent ring centered on the map to signal 'reveal' / omniscience
+        const color = 0xaa00ff;
+        const geo = new THREE.RingGeometry(8, 18, 64);
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(geo, mat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(0, 1, 0);
+        this.scene.add(ring);
+
+        let life = 1.0;
+        const vfxFactor = this.getVfxFactor();
+        const animate = () => {
+            life -= 0.03;
+            if (life > 0) {
+                ring.material.opacity = life * 0.3 * vfxFactor;
+                ring.scale.setScalar(1 + (1 - life) * 0.5 * vfxFactor);
+                requestAnimationFrame(animate);
+            } else {
                 ring.geometry.dispose();
                 ring.material.dispose();
                 this.scene.remove(ring);

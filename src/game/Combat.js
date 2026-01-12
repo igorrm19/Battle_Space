@@ -135,19 +135,22 @@ export function regenerateMana(delta) {
 }
 
 // --- Unified Damage Logic ---
-export function dealDamage(targetId, dmg, isCrit, npcInstances = []) {
+export function dealDamage(targetId, dmg, isCrit, npcInstances = [], ignoreDefense = false) {
     if (targetId === 'player') {
-        const finalDmg = Math.max(1, dmg - state.def);
+        const def = ignoreDefense ? 0 : state.def;
+        const finalDmg = Math.max(1, dmg - def);
         updateState({ hp: Math.max(0, state.hp - finalDmg) });
         return finalDmg;
     }
     if (targetId === 'void_boss') {
-        const finalDmg = Math.max(1, dmg - state.monsterDef);
+        const def = ignoreDefense ? 0 : state.monsterDef;
+        const finalDmg = Math.max(1, dmg - def);
         updateState({ monsterHp: Math.max(0, state.monsterHp - finalDmg) });
         return finalDmg;
     }
     if (targetId === 'gold_boss') {
-        const finalDmg = Math.max(1, dmg - state.bosses.gold.stats.def);
+        const def = ignoreDefense ? 0 : state.bosses.gold.stats.def;
+        const finalDmg = Math.max(1, dmg - def);
         state.bosses.gold.hp = Math.max(0, state.bosses.gold.hp - finalDmg);
         updateState({ bosses: { ...state.bosses } });
         return finalDmg;
@@ -157,7 +160,8 @@ export function dealDamage(targetId, dmg, isCrit, npcInstances = []) {
     const targetNpc = state.npcs.find(n => n.id === targetId);
     const targetInst = npcInstances.find(n => n.id === targetId);
     if (targetNpc) {
-        const finalDmg = Math.max(1, dmg - (targetNpc.stats?.def || 0));
+        const def = ignoreDefense ? 0 : (targetNpc.stats?.def || 0);
+        const finalDmg = Math.max(1, dmg - def);
         targetNpc.hp = Math.max(0, targetNpc.hp - finalDmg);
         if (targetInst) targetInst.hp = targetNpc.hp;
         updateState({ npcs: [...state.npcs] });
@@ -205,12 +209,8 @@ const NPC_ABILITIES = {
         const teleportChance = 0.3 - (npc.level || 1) * 0.02;
         if (Math.random() < teleportChance) return { type: 'teleport' };
 
-        // Void Orb Logic
+        // Void Orb Logic (damage returned, actual application handled by NPC instance)
         const dmg = (npc.stats?.atk || 30) * 1.5; // High damage
-        if (targetInstance) {
-            // Deal damage ignoring defense (simulated by high damage)
-            dealDamage(target.id, dmg, true, npcInstance.scene.children); // Need access to instances
-        }
         return { type: 'void', targetId: target.id, dmg };
     },
     red: (npc, target, npcInstance, targetInstance) => {

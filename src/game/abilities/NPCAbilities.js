@@ -47,8 +47,8 @@ export const NPC_ABILITIES = {
         // Void Orb Logic
         const dmg = (npc.stats?.atk || 30) * 1.5; // High damage
         if (targetInstance) {
-            // Deal damage ignoring defense (simulated by high damage)
-            dealDamage(target.id, dmg, true, npcInstance.scene.children);
+            // Deal damage ignoring defense
+            dealDamage(target.id, dmg, true, npcInstance.scene.children, true);
         }
         return { type: 'void', targetId: target.id, dmg };
     },

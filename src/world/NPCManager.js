@@ -169,6 +169,17 @@ export class NPCManager {
             audioManager.playGravity();
         } else if (result.type === 'teleport') {
             npc.performAbility('teleport');
+        } else if (result.type === 'void') {
+            // Purple Void Orb: perform visual attack and apply damage
+            const targetPos = this.getTargetPosition(result.targetId);
+            if (targetPos) {
+                // Pass meta so NPC can apply damage and show VFX
+                npc.performAbility('void', { pos: targetPos, targetId: result.targetId, dmg: result.dmg });
+                // Make sure NPC faces / moves towards target for clarity
+                npc.targetPos = targetPos;
+                audioManager.playSkill();
+                this.hud.showNotification(`${npc.id.toUpperCase()} LANÇOU ORBE DO VAZIO EM ${result.targetId.toUpperCase()}!`, "#aa00ff");
+            }
         } else if (result.type === 'convert' || result.type === 'zombie') {
             npc.performAbility('convert');
             this.hud.showNotification(`${result.targetId.toUpperCase()} AFETADO!`, "#ff00ff");

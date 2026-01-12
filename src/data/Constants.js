@@ -36,6 +36,10 @@ export const CONSTANTS = {
         MAX_HEAL_PARTICLES: 25,         // Reduced from 30
         MAX_TELEPORT_PARTICLES: 30,     // Reduced from 40
         MAX_SIMULTANEOUS_EFFECTS: 10,   // Max effects running at once
-        EFFECT_CULL_DISTANCE: 50        // Don't render effects beyond this distance
+        EFFECT_CULL_DISTANCE: 50,       // Don't render effects beyond this distance
+
+        // VFX intensity controls (1.0 default). Set REDUCED_SHAKE=true to significantly dampen motion.
+        INTENSITY_MULTIPLIER: 1.0,
+        REDUCED_SHAKE: false
     }
 };
