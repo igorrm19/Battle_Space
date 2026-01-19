@@ -6,7 +6,7 @@ export class NPCPanelManager {
     constructor(hud, npcManager) {
         this.hud = hud;
         this.npcManager = npcManager;
-        this.rotationInterval = 30000; // 30 seconds
+        this.rotationInterval = 60000; // 1 minute
         this.timer = 0;
         this.currentNPC = null;
         this.isActive = true;
@@ -48,6 +48,9 @@ export class NPCPanelManager {
 
         this.currentNPC = selectedNPC;
         this.hud.showNPCInfo(selectedNPC);
+
+        // Sync focusId to hide outline in scene
+        this.npcManager.sceneManager.focusId = selectedNPC.id;
     }
 
     /**
@@ -76,6 +79,8 @@ export class NPCPanelManager {
         this.currentNPC = npc;
         this.hud.showNPCInfo(npc);
         this.timer = 0; // Reset timer
+        // Sync focusId
+        this.npcManager.sceneManager.focusId = npc.id;
     }
 
     /**

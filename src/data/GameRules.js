@@ -21,10 +21,10 @@ export const GAME_RULES = {
     SCALE_PER_LEVEL: 0.05,            // Size increase per level
     
     // Yellow NPC (Lightning) specific
-    YELLOW_BASE_SPEED: 0.15,          // Base speed (much faster)
+    YELLOW_BASE_SPEED: 0.25,          // Base speed (much faster)
     YELLOW_BASE_FOV: 4.0,             // Base field of view (reduced)
     YELLOW_CHARGE_FOV: 15.0,          // FOV while charging energy
-    YELLOW_BASE_ENERGY: 200,          // Base max energy (higher than others)
+    YELLOW_BASE_ENERGY: 300,          // Base max energy (higher than others)
     YELLOW_ENERGY_PER_LEVEL: 5,       // Energy increase per level
     YELLOW_ENERGY_DRAIN: 15,          // Energy drain per second (higher)
     YELLOW_ENERGY_RECHARGE_SPEED: 8,  // Energy recharge when at high speed

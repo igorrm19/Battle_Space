@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { state, updateState } from '../core/State.js';
 
 export class Monster {
     constructor(scene) {
@@ -12,6 +13,10 @@ export class Monster {
         this.mousePos = new THREE.Vector2();
         this.targetRotation = new THREE.Euler();
         this.recoilOffset = new THREE.Vector3();
+
+        // Visual Group (for jitter and recoil)
+        this.visualGroup = new THREE.Group();
+        this.mesh.add(this.visualGroup);
 
         this.initModel();
         this.scene.add(this.mesh);
@@ -47,7 +52,7 @@ export class Monster {
             flatShading: true
         });
         this.core = new THREE.Mesh(coreGeo, this.coreMat);
-        this.mesh.add(this.core);
+        this.visualGroup.add(this.core);
 
         // Outer Glow
         const glowGeo = new THREE.SphereGeometry(1.6, 32, 32);
@@ -58,7 +63,7 @@ export class Monster {
             side: THREE.BackSide
         });
         this.glowMesh = new THREE.Mesh(glowGeo, glowMat);
-        this.mesh.add(this.glowMesh);
+        this.visualGroup.add(this.glowMesh);
 
         // Orbiting Shards
         this.shards = [];
@@ -72,7 +77,7 @@ export class Monster {
                 roughness: 0.1
             });
             const shard = new THREE.Mesh(shardGeo, shardMat);
-            this.mesh.add(shard);
+            this.visualGroup.add(shard);
             this.shards.push({
                 mesh: shard,
                 angle: (i / 12) * Math.PI * 2,
@@ -84,7 +89,7 @@ export class Monster {
 
         // Eye Group (for look-at)
         this.eyeGroup = new THREE.Group();
-        this.mesh.add(this.eyeGroup);
+        this.visualGroup.add(this.eyeGroup);
 
         const pupilGeo = new THREE.SphereGeometry(0.5, 16, 16);
         const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
@@ -94,7 +99,7 @@ export class Monster {
 
         // Point Light
         this.glow = new THREE.PointLight(0xff0000, 5, 15);
-        this.mesh.add(this.glow);
+        this.visualGroup.add(this.glow);
     }
 
     update(deltaTime, mouse, state) {
@@ -107,6 +112,8 @@ export class Monster {
 
         this.time += deltaTime;
         if (mouse) this.mousePos.copy(mouse);
+
+        if (!state) return;
 
         // Phase Check
         if (state.monsterHp < state.maxMonsterHp * 0.5 && this.phase === 1) {
@@ -130,7 +137,15 @@ export class Monster {
 
         this.core.scale.setScalar(breathScale + jitter);
 
+        // Apply visual jitter to visualGroup
+        this.visualGroup.position.set(
+            (Math.random() - 0.5) * jitterIntensity,
+            (Math.random() - 0.5) * jitterIntensity,
+            (Math.random() - 0.5) * jitterIntensity
+        );
+
         // Hit Flash Logic
+        // ... (keep existing hit flash logic)
         if (this.hitFlash > 0) {
             this.coreMat.emissiveIntensity = 20;
             this.coreMat.emissive.setHex(0xffffff);
@@ -152,13 +167,16 @@ export class Monster {
             s.mesh.position.x = Math.cos(s.angle) * r;
             s.mesh.position.y = Math.sin(s.angle) * r;
             s.mesh.position.z = Math.sin(s.angle * 0.5) * 2;
-            s.mesh.lookAt(this.mesh.position);
+            s.mesh.lookAt(this.visualGroup.position); // Look at visual center
         });
 
         // Technical Animation: Look-At (Smooth)
         let targetLook = new THREE.Vector3();
         if (state.monsterTarget !== 'player' && state.npcPos) {
             targetLook.copy(state.npcPos);
+        } else if (state.playerPos) {
+            // Safer lookAt target
+            targetLook.copy(state.playerPos).sub(this.mesh.position);
         } else {
             targetLook.set((this.mousePos.x - 0.5) * 10, -(this.mousePos.y - 0.5) * 10, 5);
         }
@@ -166,17 +184,23 @@ export class Monster {
             new THREE.Vector3(0, 0, 1),
             targetLook.clone().normalize()
         );
-        this.eyeGroup.quaternion.slerp(targetQuat, 0.1);
+        const lookRate = 1 - Math.exp(-6.0 * deltaTime);
+        this.eyeGroup.quaternion.slerp(targetQuat, lookRate);
 
-        // Physics Update
-        this.velocity.add(this.acceleration);
+        // Physics Update - Framerate Independent
+        const physicsStep = deltaTime * 60;
+        this.velocity.add(this.acceleration.clone().multiplyScalar(physicsStep));
         this.velocity.clampLength(0, this.maxSpeed);
-        this.mesh.position.add(this.velocity);
+        this.mesh.position.add(this.velocity.clone().multiplyScalar(physicsStep));
         this.acceleration.set(0, 0, 0);
 
-        // Recoil Smoothing (Applied on top of movement)
-        this.recoilOffset.lerp(new THREE.Vector3(0, 0, 0), 0.1);
-        this.mesh.position.add(this.recoilOffset.clone().multiplyScalar(0.1));
+        // Sync with global state
+        updateState({ monsterPos: this.mesh.position.clone() });
+
+        // Recoil Smoothing (Applied to visualGroup)
+        const recoilRate = 1 - Math.exp(-10.0 * deltaTime); // Snap back faster
+        this.recoilOffset.lerp(new THREE.Vector3(0, 0, 0), recoilRate);
+        this.visualGroup.position.add(this.recoilOffset);
     }
 
     applyForce(force) {

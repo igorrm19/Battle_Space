@@ -1,15 +1,11 @@
 import { state } from '../core/State.js';
+import { gsap } from 'gsap';
 
 export class HUD {
     constructor(container) {
         this.container = container;
         this.init();
         window.addEventListener('stateUpdate', () => this.update());
-
-        // Game Log Listener
-        window.addEventListener('game-log', (e) => {
-            this.addLogMessage(e.detail.message, e.detail.type);
-        });
     }
 
     init() {
@@ -29,183 +25,56 @@ export class HUD {
                         </filter>
                     </defs>
 
-                    <!-- HP Bar with Ornament (Hidden for Spectator) -->
-                    <g transform="translate(50, 50)" style="display: none;">
-                        <rect x="0" y="0" width="400" height="30" fill="rgba(0,0,0,0.5)" stroke="#444" stroke-width="2"/>
-                        <rect id="hp-bar" x="0" y="0" width="400" height="30" fill="url(#hp-grad)" class="hud-bar" filter="url(#glow)"/>
-                        <path d="M-10,-10 L10,-10 L0,0 Z" fill="#ffaa00" transform="translate(0, 15) rotate(-90)"/>
-                        <text x="200" y="22" fill="white" font-size="20" text-anchor="middle" id="hp-text">HP: 1000/1000</text>
-                    </g>
-
-                    <!-- MP Bar (Hidden) -->
-                    <g transform="translate(50, 100)" style="display: none;">
-                        <rect x="0" y="0" width="300" height="20" fill="rgba(0,0,0,0.5)" stroke="#444" stroke-width="2"/>
-                        <rect id="mp-bar" x="0" y="0" width="300" height="20" fill="#00aaff" class="hud-bar"/>
-                        <text x="150" y="15" fill="white" font-size="14" text-anchor="middle" id="mp-text">MP: 500/500</text>
-                    </g>
-
-                    <!-- XP Bar & Level (Hidden) -->
-                    <g transform="translate(50, 140)" style="display: none;">
-                        <text x="0" y="-5" fill="#00ff00" font-size="16" id="lvl-text">LVL 1</text>
-                        <rect x="0" y="0" width="200" height="8" fill="rgba(0,0,0,0.5)" stroke="#222" stroke-width="1"/>
-                        <rect id="xp-bar" x="0" y="0" width="200" height="8" fill="#00ff00" class="hud-bar"/>
-                    </g>
-
-                    <!-- Stamina Bar (Hidden) -->
-                    <g transform="translate(50, 160)" style="display: none;">
-                        <rect x="0" y="0" width="150" height="6" fill="rgba(0,0,0,0.5)" stroke="#444" stroke-width="1"/>
-                        <rect id="stamina-bar" x="0" y="0" width="150" height="6" fill="#ffaa00" class="hud-bar"/>
-                    </g>
-
-                    <!-- Stats (DEF/EVA) (Hidden) -->
-                    <g transform="translate(50, 180)" style="display: none;">
-                        <text x="0" y="0" fill="#aaa" font-size="14" id="def-text">DEF: 10</text>
-                        <text x="100" y="0" fill="#aaa" font-size="14" id="eva-text">EVA: 5%</text>
-                    </g>
-
                     <!-- Combo Counter -->
-                    <g id="combo-group" transform="translate(1700, 200)" style="opacity: 0; transition: opacity 0.3s;">
+                    <g id="combo-group" transform="translate(1700, 200)" style="opacity: 0;">
                         <text x="0" y="0" fill="#ffaa00" font-size="120" text-anchor="end" id="combo-text" filter="url(#glow)">0</text>
                         <text x="0" y="40" fill="#ffffff" font-size="30" text-anchor="end">COMBO</text>
                     </g>
 
-                    <!-- Monster HP Bar (Top Center) -->
-                    <g transform="translate(760, 50)">
-                        <rect x="0" y="0" width="400" height="15" fill="rgba(0,0,0,0.5)" stroke="#ff4500" stroke-width="1"/>
-                        <rect id="monster-hp-bar" x="0" y="0" width="400" height="15" fill="#ff4500" class="hud-bar"/>
-                        <text x="200" y="-10" fill="#ff4500" font-size="18" text-anchor="middle">ENTIDADE DO VAZIO</text>
+                    <!-- Monster HP Bar (Top Center) - Marvel Style -->
+                    <g transform="translate(660, 40)">
+                        <rect x="0" y="0" width="600" height="20" fill="rgba(20, 0, 0, 0.8)" rx="10"/>
+                        <rect id="monster-hp-bar" x="0" y="0" width="600" height="20" fill="#ff0000" rx="10" filter="url(#glow)"/>
+                        <path d="M0,0 L600,0 L590,20 L10,20 Z" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+                        <text x="300" y="-12" fill="#fff" font-size="22" letter-spacing="4" text-anchor="middle" font-weight="900" style="text-shadow: 0 0 10px #ff0000;">ENTIDADE DO VAZIO</text>
                     </g>
 
-                    <!-- Gold Goddess HP Bar (Top Right) -->
-                    <g id="gold-boss-hud" transform="translate(1400, 50)" style="display: none; cursor: pointer; pointer-events: all;" onclick="window.focusTarget('gold_boss')">
-                        <rect x="0" y="0" width="400" height="15" fill="rgba(0,0,0,0.5)" stroke="#ffd700" stroke-width="1"/>
-                        <rect id="gold-boss-hp-bar" x="0" y="0" width="400" height="15" fill="#ffd700" class="hud-bar"/>
-                        <text x="200" y="-10" fill="#ffd700" font-size="18" text-anchor="middle">DEUSA DO OURO</text>
+                    <!-- Gold Goddess HP Bar (Top Right) - Marvel Style -->
+                    <g id="gold-boss-hud" transform="translate(1400, 40)" style="display: none;">
+                        <rect x="0" y="0" width="450" height="15" fill="rgba(20, 20, 0, 0.8)" rx="7"/>
+                        <rect id="gold-boss-hp-bar" x="0" y="0" width="450" height="15" fill="#ffd700" rx="7" filter="url(#glow)"/>
+                        <text x="225" y="-10" fill="#ffd700" font-size="20" text-anchor="middle" font-weight="bold">DEUSA DO OURO</text>
                     </g>
 
                     <!-- NPC HP Bars (Bottom Area) -->
-                    <g id="npc-hud-container" transform="translate(50, 800)">
-                        <!-- Dynamically populated -->
-                    </g>
+                    <g id="npc-hud-container" transform="translate(50, 800)"></g>
 
                     <!-- Lore Log (Bottom Right) -->
                     <g id="lore-log" transform="translate(1500, 800)">
                         <text x="0" y="-10" fill="#00ffff" font-size="20" font-weight="bold">FRAGMENTOS DE LORE</text>
-                        <g id="lore-list">
-                            <!-- Dynamically populated -->
-                        </g>
+                        <g id="lore-list"></g>
                     </g>
 
                     <!-- Notifications -->
-                    <g id="notification-group" transform="translate(960, 300)" style="opacity: 0; pointer-events: none;">
-                        <text x="0" y="0" fill="#ffffff" font-size="60" text-anchor="middle" id="notification-text" filter="url(#glow)"></text>
-                    </g>
-
-                    <!-- Game Over Overlay -->
-                    <g id="game-over-overlay" style="display: none;">
-                        <rect x="0" y="0" width="1920" height="1080" fill="rgba(0,0,0,0.8)"/>
-                        <text x="960" y="450" fill="#ff0000" font-size="120" text-anchor="middle" filter="url(#glow)" style="font-weight: bold;">VOCÊ FOI CONSUMIDO</text>
-                        <text x="960" y="550" fill="#ffffff" font-size="40" text-anchor="middle">A escuridão tomou sua alma...</text>
-                        <g id="retry-btn" transform="translate(860, 650)" style="cursor: pointer; pointer-events: all;" onclick="window.retryGame()">
-                            <rect x="0" y="0" width="200" height="60" fill="#440000" stroke="#ff0000" stroke-width="2"/>
-                            <text x="100" y="40" fill="#ffffff" font-size="24" text-anchor="middle">TENTAR NOVAMENTE</text>
-                        </g>
+                    <g id="notification-group" transform="translate(960, 300)" style="opacity: 0;">
+                        <text id="notification-text" x="0" y="0" fill="white" font-size="48" text-anchor="middle" font-weight="bold" filter="url(#glow)"></text>
                     </g>
                 </svg>
             </div>
-            <style>
-                .hud-bar { transition: width 0.3s ease-out; }
-                @keyframes barPulse {
-                    0% { filter: brightness(1); }
-                    50% { filter: brightness(1.5); }
-                    100% { filter: brightness(1); }
-                }
-                .bar-low { animation: barPulse 0.5s infinite; }
-                #combo-text { transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-            </style>
         `);
     }
 
     update() {
-        const hpBar = document.getElementById('hp-bar');
-        const mpBar = document.getElementById('mp-bar');
-        const xpBar = document.getElementById('xp-bar');
         const monsterHpBar = document.getElementById('monster-hp-bar');
-
-        if (hpBar) hpBar.setAttribute('width', (state.hp / state.maxHp) * 400);
-        if (mpBar) mpBar.setAttribute('width', (state.mp / state.maxMp) * 300);
-        if (xpBar) xpBar.setAttribute('width', (state.xp / state.maxXp) * 200);
-        if (monsterHpBar) monsterHpBar.setAttribute('width', (state.monsterHp / state.maxMonsterHp) * 400);
-
-        const staminaBar = document.getElementById('stamina-bar');
-        if (staminaBar) staminaBar.setAttribute('width', (state.stamina / state.maxStamina) * 150);
-
-        document.getElementById('hp-text').textContent = `HP: ${Math.ceil(state.hp)}/${state.maxHp}`;
-        document.getElementById('mp-text').textContent = `MP: ${Math.ceil(state.mp)}/${state.maxMp}`;
-        document.getElementById('lvl-text').textContent = `LVL ${state.lvl}`;
-
-        const defText = document.getElementById('def-text');
-        const evaText = document.getElementById('eva-text');
-        if (monsterHpBar) monsterHpBar.setAttribute('width', (state.monsterHp / state.maxMonsterHp) * 400);
+        if (monsterHpBar) monsterHpBar.setAttribute('width', (state.monsterHp / state.maxMonsterHp) * 600);
 
         const goldBossHud = document.getElementById('gold-boss-hud');
         const goldBossHpBar = document.getElementById('gold-boss-hp-bar');
         if (goldBossHud) goldBossHud.style.display = (state.inBattle && state.bosses.gold.hp > 0) ? 'block' : 'none';
-        if (goldBossHpBar) goldBossHpBar.setAttribute('width', (state.bosses.gold.hp / state.bosses.gold.maxHp) * 400);
+        if (goldBossHpBar) goldBossHpBar.setAttribute('width', (state.bosses.gold.hp / state.bosses.gold.maxHp) * 450);
 
         this.updateNpcHud();
-
-        if (defText) defText.textContent = `DEF: ${state.def}`;
-        if (evaText) evaText.textContent = `EVA: ${Math.round(state.eva * 100)}%`;
-
-        const gameOver = document.getElementById('game-over-overlay');
-        if (gameOver) {
-            gameOver.style.display = state.hp <= 0 ? 'block' : 'none';
-        }
-
         this.updateLoreLog();
-    }
-
-    updateLoreLog() {
-        const list = document.getElementById('lore-list');
-        if (!list) return;
-
-        list.innerHTML = state.lore.map((text, i) => {
-            return `<text x="0" y="${i * 25}" fill="#aaa" font-size="14">- ${text}</text>`;
-        }).join('');
-    }
-
-    updateCombo(count) {
-        const group = document.getElementById('combo-group');
-        const text = document.getElementById('combo-text');
-        if (!group || !text) return;
-
-        if (count > 1) {
-            group.style.opacity = '1';
-            text.textContent = count;
-            text.style.transform = 'scale(1.2)';
-            setTimeout(() => { text.style.transform = 'scale(1)'; }, 100);
-        } else {
-            group.style.opacity = '0';
-        }
-    }
-
-    showNotification(message, color = '#ffffff') {
-        const group = document.getElementById('notification-group');
-        const text = document.getElementById('notification-text');
-        if (!group || !text) return;
-
-        text.textContent = message;
-        text.setAttribute('fill', color);
-        group.style.opacity = '1';
-        group.style.transform = 'translate(960, 300) scale(1.2)';
-
-        setTimeout(() => {
-            group.style.transform = 'translate(960, 300) scale(1)';
-            setTimeout(() => {
-                group.style.opacity = '0';
-            }, 2000);
-        }, 100);
     }
 
     updateNpcHud() {
@@ -217,241 +86,139 @@ export class HUD {
             return;
         }
 
-        // Only redraw if count changed or first time
         if (container.children.length !== state.npcs.length) {
             container.innerHTML = state.npcs.map((npc, i) => {
-                const factionNum = npc.isZombie ? 4 : (npc.faction === 'player' ? 1 : (npc.faction === 'void' ? 2 : 3));
                 const factionColor = this.getFactionColor(npc.faction);
                 const classColor = this.getClassColor(npc.class);
                 const col = i % 2;
                 const row = Math.floor(i / 2);
-                const x = col * 250;
-                const y = row * 45; // Increased row height for level
-                const strategyLabel = npc.strategy === 'tactician' ? '🧠' : (npc.strategy === 'aggressive' ? '⚔️' : '🌾');
+                const x = col * 300;
+                const y = row * 50;
                 return `
                     <g transform="translate(${x}, ${y})" style="cursor: pointer; pointer-events: all;" onclick="window.focusTarget('${npc.id}')">
-                        <text x="0" y="-18" fill="${factionColor}" font-size="10" font-weight="bold">${npc.id.toUpperCase()} ${strategyLabel}</text>
-                        <text x="0" y="-8" fill="#aaa" font-size="9">LVL ${npc.level || 1} | ATK:${npc.stats?.atk || '?'} DEF:${npc.stats?.def || '?'}</text>
-                        <rect x="0" y="0" width="180" height="6" fill="rgba(0,0,0,0.5)" stroke="${factionColor}" stroke-width="1"/>
-                        <rect id="npc-bar-${npc.id}" x="0" y="0" width="${(npc.hp / npc.maxHp) * 180}" height="6" fill="${classColor}" class="hud-bar"/>
+                        <text x="0" y="-18" fill="${factionColor}" font-size="12" font-weight="bold">${npc.id.toUpperCase()}</text>
+                        <text x="0" y="-8" fill="#aaa" font-size="10">LVL ${npc.level || 1} | ATK:${npc.stats?.atk || '?'}</text>
+                        <rect x="0" y="0" width="220" height="8" fill="rgba(0,0,0,0.5)" rx="4"/>
+                        <rect id="npc-bar-${npc.id}" x="0" y="0" width="${(npc.hp / npc.maxHp) * 220}" height="8" fill="${classColor}" rx="4" filter="url(#glow)"/>
                     </g>
                 `;
             }).join('');
         } else {
-            // Update existing bars and levels
             state.npcs.forEach(npc => {
                 const bar = document.getElementById(`npc-bar-${npc.id}`);
-                if (bar) bar.setAttribute('width', (npc.hp / npc.maxHp) * 180);
-
-                // Update level text if needed (we could optimize this but for now let's just redraw if level changes or keep it simple)
-                // To be safe, we might want to update the text element too.
+                if (bar) bar.setAttribute('width', (npc.hp / npc.maxHp) * 220);
                 const text = bar?.parentElement?.querySelector('text:last-of-type');
-                if (text) {
-                    text.textContent = `LVL ${npc.level || 1} | ATK:${npc.stats?.atk || '?'} DEF:${npc.stats?.def || '?'}`;
-                }
+                if (text) text.textContent = `LVL ${npc.level || 1} | ATK:${npc.stats?.atk || '?'}`;
             });
         }
     }
 
-    showSection(sectionId) {
-        // This game uses a single overlay, but we can handle specific UI elements
-        if (sectionId === 'battle-ui') {
-            const battleBtn = document.getElementById('battle-btn');
-            const attackBtn = document.getElementById('attack-btn');
-            const skillBtn = document.getElementById('skill-btn');
-            if (battleBtn) battleBtn.style.display = 'none';
-            if (attackBtn) attackBtn.style.display = 'inline-block';
-            if (skillBtn) skillBtn.style.display = 'inline-block';
+    updateLoreLog() {
+        const list = document.getElementById('lore-list');
+        if (!list) return;
+        list.innerHTML = state.lore.map((text, i) => {
+            return `<text x="0" y="${i * 25}" fill="#00ffff" font-size="14" opacity="${0.6 + Math.sin(Date.now() * 0.001 + i) * 0.2}">- ${text}</text>`;
+        }).join('');
+    }
+
+    updateCombo(count) {
+        const group = document.getElementById('combo-group');
+        const text = document.getElementById('combo-text');
+        if (!group || !text) return;
+
+        if (count > 0) {
+            text.textContent = count;
+            gsap.killTweensOf(group);
+            gsap.to(group, { opacity: 1, scale: 1.2, duration: 0.2, yoyo: true, repeat: 1 });
+        } else {
+            gsap.to(group, { opacity: 0, duration: 0.5 });
         }
     }
 
+    showNotification(text, color = '#ffffff') {
+        const group = document.getElementById('notification-group');
+        const textEl = document.getElementById('notification-text');
+        if (!group || !textEl) return;
+
+        textEl.textContent = text;
+        textEl.setAttribute('fill', color);
+        textEl.style.textShadow = `0 0 20px ${color}`;
+
+        gsap.killTweensOf(group);
+        gsap.set(group, { opacity: 0, y: 400, scale: 0.8 });
+        gsap.to(group, { opacity: 1, y: 450, scale: 1, duration: 0.6, ease: "back.out(1.7)" });
+        gsap.to(group, { opacity: 0, y: 400, duration: 0.5, delay: 2.5, ease: "power2.in" });
+    }
+
+
     getFactionColor(faction) {
-        if (faction === 'player') return '#00ffff';
         if (faction === 'void') return '#ff4500';
         if (faction === 'gold') return '#ffd700';
-        return '#ffffff';
+        return '#00ffff';
     }
 
     getClassColor(cls) {
-        const colors = {
-            green: '#00ff00',
-            red: '#ff0000',
-            yellow: '#ffff00',
-            purple: '#aa00ff',
-            brown: '#8b4513',
-            pink: '#ff00ff',
-            darkgreen: '#006400',
-            blue: '#00ffff'
-        };
+        const colors = { green: '#00ff00', yellow: '#ffff00', red: '#ff0000', purple: '#aa00ff', brown: '#8b4513', pink: '#ff00ff', blue: '#00ffff' };
         return colors[cls] || '#ffffff';
     }
 
-    showNPCInfo(npc) {
-        console.log('[HUD] showNPCInfo called with:', npc ? npc.id : 'null');
-
-        const panel = document.getElementById('npc-info-panel');
-        const content = document.getElementById('npc-info-content');
-        const closeBtn = document.getElementById('npc-close-btn');
-        const nextBtn = document.getElementById('npc-next-btn');
-
-        if (!panel || !content) {
-            console.error('[HUD] NPC info panel elements not found in DOM');
-            return;
-        }
-
-        // Setup close button (only once)
-        if (!closeBtn._listenerAdded) {
-            closeBtn.addEventListener('click', () => {
-                console.log('[HUD] Close button clicked');
-                panel.classList.remove('visible');
-            });
-            closeBtn._listenerAdded = true;
-        }
-
-        // Setup next button (only once)
-        if (nextBtn && !nextBtn._listenerAdded) {
-            nextBtn.addEventListener('click', () => {
-                console.log('[HUD] Next button clicked');
-                // Call the game's NPCPanelManager to show next NPC
-                if (window.game && window.game.npcPanelManager) {
-                    window.game.npcPanelManager.nextNPC();
-                }
-            });
-            nextBtn._listenerAdded = true;
-        }
-
-        // Hide panel if no NPC
-        if (!npc) {
-            panel.classList.remove('visible');
-            return;
-        }
-
-        // Get colors
-        const color = this.getClassColor(npc.class);
-        const factionColor = this.getFactionColor(npc.faction);
-        const strategyEmoji = npc.strategy === 'tactician' ? '🧠 Tático' :
-            (npc.strategy === 'aggressive' ? '⚔️ Agressivo' : '🌾 Fazendeiro');
-
-        // Update content
-        content.innerHTML = `
-            <h3 style="color: ${color}; margin: 0 0 12px 0; text-align: center; text-shadow: 0 0 15px ${color}; font-size: 1.4em; font-weight: bold;">
-                ${npc.id.toUpperCase()}
-            </h3>
-            
-            <div style="text-align: center; margin-bottom: 12px; font-size: 0.9em; color: #bbb; font-weight: bold;">
-                ${npc.class.toUpperCase()}
-            </div>
-            
-            <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 0.95em;">
-                    <strong>Nível:</strong> 
-                    <span style="color: #ffff00; font-weight: bold; font-size: 1.1em;">${npc.level}</span>
-                </span>
-                <span style="color: ${factionColor}; font-weight: bold; font-size: 0.85em; padding: 3px 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
-                    ${npc.faction.toUpperCase()}
-                </span>
-            </div>
-            
-            <div style="margin-bottom: 12px; text-align: center; background: rgba(255,255,255,0.15); padding: 8px; border-radius: 6px; font-size: 1em; font-weight: bold;">
-                ${strategyEmoji}
-            </div>
-            
-            <hr style="border: none; border-top: 2px solid ${color}; margin: 15px 0; opacity: 0.6;">
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.95em; margin-bottom: 15px;">
-                <div style="background: rgba(255,136,136,0.25); padding: 8px; border-radius: 6px; text-align: center; border: 1px solid rgba(255,136,136,0.4);">
-                    <div style="font-size: 0.75em; color: #ccc; margin-bottom: 3px;">⚔️ ATK</div>
-                    <div style="color:#ff8888; font-weight: bold; font-size: 1.2em;">${Math.round(npc.stats.atk)}</div>
-                </div>
-                <div style="background: rgba(136,136,255,0.25); padding: 8px; border-radius: 6px; text-align: center; border: 1px solid rgba(136,136,255,0.4);">
-                    <div style="font-size: 0.75em; color: #ccc; margin-bottom: 3px;">🛡️ DEF</div>
-                    <div style="color:#8888ff; font-weight: bold; font-size: 1.2em;">${Math.round(npc.stats.def)}</div>
-                </div>
-                <div style="background: rgba(136,255,255,0.25); padding: 8px; border-radius: 6px; text-align: center; border: 1px solid rgba(136,255,255,0.4);">
-                    <div style="font-size: 0.75em; color: #ccc; margin-bottom: 3px;">🧠 INT</div>
-                    <div style="color:#88ffff; font-weight: bold; font-size: 1.2em;">${Math.round(npc.stats.int || 0)}</div>
-                </div>
-                <div style="background: rgba(255,255,136,0.25); padding: 8px; border-radius: 6px; text-align: center; border: 1px solid rgba(255,255,136,0.4);">
-                    <div style="font-size: 0.75em; color: #ccc; margin-bottom: 3px;">💨 EVA</div>
-                    <div style="color:#ffff88; font-weight: bold; font-size: 1.2em;">${(npc.stats.eva * 100).toFixed(0)}%</div>
-                </div>
-            </div>
-            
-            <div style="margin-top: 18px;">
-                <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 5px;">
-                    <span style="color: #bbb; font-weight: bold;">HP</span>
-                    <span style="font-weight: bold; color: #fff;">${Math.round(npc.hp)} / ${Math.round(npc.maxHp)}</span>
-                </div>
-                <div style="width: 100%; height: 10px; background: #222; border-radius: 5px; overflow: hidden; border: 2px solid #444; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);">
-                    <div style="width: ${(npc.hp / npc.maxHp) * 100}%; height: 100%; background: linear-gradient(90deg, #00ff00, #00cc00); box-shadow: 0 0 15px #00ff00; transition: width 0.3s ease;"></div>
-                </div>
-            </div>
-        `;
-
-        console.log('[HUD] Content updated');
-
-        // Update panel border color
-        panel.style.borderColor = color;
-        panel.style.boxShadow = `0 0 30px ${color}, inset 0 0 30px rgba(0,0,0,0.8)`;
-
-        console.log('[HUD] Adding visible class to panel');
-        // Show panel
-        panel.classList.add('visible');
-
-        console.log('[HUD] Panel classes:', panel.className);
-        console.log('[HUD] Panel display style:', window.getComputedStyle(panel).display);
+    getLogColor(type) {
+        const colors = { kill: '#ff0000', death: '#888', levelup: '#ffff00', spawn: '#00ff00', info: '#00ffff', boss: '#ffaa00' };
+        return colors[type] || '#ffffff';
     }
 
-    addLogMessage(message, type = 'info') {
-        let logContainer = document.getElementById('game-log-container');
-        if (!logContainer) {
-            logContainer = document.createElement('div');
-            logContainer.id = 'game-log-container';
-            logContainer.style.cssText = `
-                position: absolute;
-                bottom: 20px;
-                right: 20px;
-                width: 300px;
-                max-height: 200px;
-                overflow-y: hidden;
-                display: flex;
-                flex-direction: column;
-                justify-content: flex-end;
-                pointer-events: none;
-                z-index: 900;
-                font-family: 'Cinzel', serif;
-                font-size: 14px;
-                text-shadow: 1px 1px 2px black;
-            `;
-            document.body.appendChild(logContainer);
+    showNPCInfo(npcOrId) {
+        const panel = document.getElementById('npc-info-panel');
+        const content = document.getElementById('npc-info-content');
+        if (!panel || !content) return;
+
+        let npc;
+        if (typeof npcOrId === 'string') {
+            npc = state.npcs.find(n => n.id === npcOrId);
+        } else {
+            npc = npcOrId;
         }
 
-        const entry = document.createElement('div');
-        entry.style.cssText = `
-            margin-top: 5px;
-            padding: 5px 10px;
-            background: rgba(0, 0, 0, 0.6);
-            border-left: 3px solid #fff;
-            color: #fff;
-            opacity: 0;
-            transition: opacity 0.5s;
+        if (!npc) return;
+
+        panel.classList.add('visible');
+
+        const factionColor = this.getFactionColor(npc.faction);
+        content.innerHTML = `
+            <h2 style="color: ${factionColor}; margin-top: 0; text-shadow: 0 0 10px ${factionColor}">${npc.id.toUpperCase()}</h2>
+            <div style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+                <span style="color: #aaa">Fação:</span> <span style="color: ${factionColor}">${npc.faction.toUpperCase()}</span><br>
+                <span style="color: #aaa">Classe:</span> <span style="color: ${this.getClassColor(npc.class)}">${npc.class.toUpperCase()}</span><br>
+                <span style="color: #aaa">Nível:</span> <span style="color: #fff">${npc.level}</span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;">
+                <div><span style="color: #aaa">HP:</span> ${Math.floor(npc.hp)}/${npc.maxHp}</div>
+                <div><span style="color: #aaa">ATK:</span> ${npc.stats.atk}</div>
+                <div><span style="color: #aaa">DEF:</span> ${npc.stats.def}</div>
+                <div><span style="color: #aaa">EVA:</span> ${(npc.stats.eva * 100).toFixed(0)}%</div>
+            </div>
+
+            <div style="margin-top: 20px; font-style: italic; color: #888; font-size: 0.85em;">
+                ${this.getNPCDescription(npc.class)}
+            </div>
+            <div style="margin-top: 20px; text-align: center;">
+                <button class="menu-btn" onclick="window.focusTarget('${npc.id}')" style="font-size: 14px; padding: 5px 15px;">FOCAR CÂMERA</button>
+            </div>
         `;
+    }
 
-        let color = '#fff';
-        if (type === 'kill') { color = '#ff4444'; entry.style.borderLeftColor = color; }
-        if (type === 'levelup') { color = '#ffff00'; entry.style.borderLeftColor = color; }
-        if (type === 'boss') { color = '#aa00ff'; entry.style.borderLeftColor = color; }
-
-        entry.innerHTML = `<span style="color:${color}">[${type.toUpperCase()}]</span> ${message}`;
-        logContainer.appendChild(entry);
-
-        // Fade in
-        requestAnimationFrame(() => entry.style.opacity = '1');
-
-        // Remove after 5 seconds
-        setTimeout(() => {
-            entry.style.opacity = '0';
-            setTimeout(() => entry.remove(), 500);
-        }, 5000);
+    getNPCDescription(cls) {
+        const descs = {
+            green: "Especialista em cura e suporte vital do Shadow Realm.",
+            yellow: "Mestre da velocidade, acumulando força através do movimento constante.",
+            red: "Piroclasta destructivo, transformando o campo em um inferno.",
+            purple: "Oráculo arcano com percepção absoluta de todas as entidades.",
+            brown: "Ancorador gravitacional, imune a empuxos e mestre da massa.",
+            pink: "Manipulador tático, capaz de corromper a mente dos adversários.",
+            blue: "Lorde do frio absoluto, paralisando oponentes em seu rastro.",
+            darkgreen: "Necrofagos das sombras, trazendo o exército dos mortos de volta."
+        };
+        return descs[cls] || "Um combatente misterioso lutando pela supremacia.";
     }
 }

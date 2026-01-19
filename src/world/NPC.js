@@ -5,6 +5,34 @@ import { MathUtils } from '../utils/MathUtils.js';
 import { GAME_RULES } from '../data/GameRules.js';
 import { StatRules } from '../game/rules/StatRules.js';
 import { dealDamage } from '../game/Combat.js';
+import { gsap } from 'gsap';
+
+const ShieldShader = {
+    uniforms: {
+        time: { value: 0 },
+        color: { value: new THREE.Color(0x00ffff) },
+        opacity: { value: 0.4 }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+        }
+    `,
+    fragmentShader: `
+        uniform float time;
+        uniform vec3 color;
+        uniform float opacity;
+        varying vec2 vUv;
+        void main() {
+            float dist = length(vUv - 0.5);
+            float ripple = sin(dist * 20.0 - time * 5.0) * 0.5 + 0.5;
+            float glow = pow(1.0 - dist, 3.0);
+            gl_FragColor = vec4(color * (glow + ripple * 0.2), opacity * glow);
+        }
+    `
+};
 
 export class NPC {
     constructor(scene, config) {
@@ -12,6 +40,7 @@ export class NPC {
         this.id = config.id;
         this.faction = config.faction;
         this.class = config.class; // 'green', 'yellow', 'red', 'purple', 'brown'
+        this.isSelected = false;
 
         this.mesh = new THREE.Group();
         this.initModel();
@@ -25,7 +54,7 @@ export class NPC {
         this.position = new THREE.Vector3();
         this.velocity = new THREE.Vector3();
         this.acceleration = new THREE.Vector3();
-        
+
         // Yellow NPC has much higher speed
         if (this.class === 'yellow') {
             this.maxSpeed = GAME_RULES.YELLOW_BASE_SPEED + Math.random() * 0.02;
@@ -37,7 +66,7 @@ export class NPC {
         if (isNaN(this.maxSpeed) || this.maxSpeed <= 0) this.maxSpeed = 0.1;
         if (isNaN(this.maxForce) || this.maxForce <= 0) this.maxForce = 0.02;
         this.targetPos = null;
-        
+
         // Yellow NPC specific: Momentum system
         if (this.class === 'yellow') {
             this.momentum = 1.0;
@@ -55,6 +84,7 @@ export class NPC {
         this.lightningLine = null;
         this.lightningExpiry = 0;
         this.fireParticles = [];
+        this.statusEffects = [];
         this.isZombie = config.isZombie || false;
         this.masterId = config.masterId || null;
         this.trails = [];
@@ -147,41 +177,50 @@ export class NPC {
         const mat = new THREE.MeshPhysicalMaterial({
             color: color,
             emissive: color,
-            emissiveIntensity: 1.0, // Reduced for better clarity
-            roughness: 0.3,
-            metalness: 0.7,
-            flatShading: true // Better look for low poly shapes
+            emissiveIntensity: 5.0, // High but visible
+            roughness: 0.1,
+            metalness: 0.9,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.1,
+            sheen: 1.0,
+            sheenColor: color,
+            flatShading: false
         });
         this.body = new THREE.Mesh(geo, mat);
         this.mesh.add(this.body);
 
-        // Faction Aura (Persistent Ring)
-        const auraGeo = new THREE.RingGeometry(0.7, 0.9, 32);
-        const auraMat = new THREE.MeshBasicMaterial({
-            color: CONSTANTS.FACTION_COLORS[this.faction],
+        // Faction Aura (Premium Shield Shader)
+        const auraGeo = new THREE.PlaneGeometry(2.0, 2.0);
+        this.auraMat = new THREE.ShaderMaterial({
+            uniforms: THREE.UniformsUtils.clone(ShieldShader.uniforms),
+            vertexShader: ShieldShader.vertexShader,
+            fragmentShader: ShieldShader.fragmentShader,
             transparent: true,
-            opacity: 0.4,
+            depthWrite: false,
             side: THREE.DoubleSide,
-            depthWrite: false // Prevent z-fighting
+            blending: THREE.AdditiveBlending
         });
-        this.aura = new THREE.Mesh(auraGeo, auraMat);
-        this.aura.rotation.x = Math.PI / 2;
+        this.auraMat.uniforms.color.value.set(CONSTANTS.FACTION_COLORS[this.faction]);
+
+        this.aura = new THREE.Mesh(auraGeo, this.auraMat);
+        this.aura.rotation.x = -Math.PI / 2;
         this.aura.position.y = -0.7;
         this.mesh.add(this.aura);
 
-        // Floating Particles
-        this.particles = new THREE.Group();
-        this.mesh.add(this.particles);
-        for (let i = 0; i < 5; i++) {
-            const pGeo = new THREE.SphereGeometry(0.1, 8, 8);
-            const pMat = new THREE.MeshBasicMaterial({ color: color });
-            const p = new THREE.Mesh(pGeo, pMat);
-            p.position.set(
-                (Math.random() - 0.5) * 2,
-                (Math.random() - 0.5) * 2,
-                (Math.random() - 0.5) * 2
-            );
-            this.particles.add(p);
+        // Floating Particles / Energy Bits (Marvel Power Signature)
+        this.energyBits = [];
+        for (let i = 0; i < 3; i++) {
+            const bGeo = new THREE.IcosahedronGeometry(0.08, 0);
+            const bMat = new THREE.MeshBasicMaterial({ color: color });
+            const bit = new THREE.Mesh(bGeo, bMat);
+            this.mesh.add(bit);
+            this.energyBits.push({
+                mesh: bit,
+                angle: (i / 3) * Math.PI * 2,
+                dist: 0.6 + Math.random() * 0.4,
+                speed: 2 + Math.random() * 3,
+                yOff: (Math.random() - 0.5) * 0.5
+            });
         }
 
         // Visual Field (FOV Ring)
@@ -193,18 +232,78 @@ export class NPC {
             fovRadius = 5 + (this.level * 1.0);
         }
         if (isNaN(fovRadius) || fovRadius <= 0.2) fovRadius = 6; // Safety fallback
-        const fovGeo = new THREE.RingGeometry(fovRadius - 0.2, fovRadius, 32);
+        const fovGeo = new THREE.RingGeometry(fovRadius - 0.2, fovRadius, 64);
         const fovMat = new THREE.MeshBasicMaterial({
             color: color,
             transparent: true,
-            opacity: 0.15,
+            opacity: 0.4,
             side: THREE.DoubleSide,
-            depthWrite: false
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
         });
         this.fovRing = new THREE.Mesh(fovGeo, fovMat);
-        this.fovRing.rotation.x = Math.PI / 2;
         this.fovRing.position.y = -0.6;
         this.mesh.add(this.fovRing);
+
+        // --- HIGHLIGHTS TO SOBRESSAIR (UX FIX) ---
+        // Point Light for NPC to light up environment
+        this.light = new THREE.PointLight(color, 5, 10);
+        this.light.position.y = 1;
+        this.mesh.add(this.light);
+
+        // Glow Sprite (Billboard) for visibility
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+
+        // Robust color extraction from hex number
+        const r = (color >> 16) & 255;
+        const g = (color >> 8) & 255;
+        const b = color & 255;
+        grad.addColorStop(0.2, `rgba(${r}, ${g}, ${b}, 0.5)`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 64);
+
+        const glowTex = new THREE.CanvasTexture(canvas);
+        const glowMat = new THREE.SpriteMaterial({
+            map: glowTex,
+            color: color,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        this.glowSprite = new THREE.Sprite(glowMat);
+        this.glowSprite.scale.set(5, 5, 1); // Larger
+        this.mesh.add(this.glowSprite);
+
+        // Secondary Soft Aura for high-level visibility
+        const softGlowMat = new THREE.SpriteMaterial({
+            map: glowTex,
+            color: color,
+            transparent: true,
+            opacity: 0.3,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        this.softGlow = new THREE.Sprite(softGlowMat);
+        this.softGlow.scale.set(4, 4, 1); // Moderate halo
+        this.mesh.add(this.softGlow);
+
+        // Power Signature Ring
+        const ringGeo = new THREE.TorusGeometry(0.5, 0.03, 8, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending
+        });
+        this.powerRing = new THREE.Mesh(ringGeo, ringMat);
+        this.powerRing.rotation.x = Math.PI / 2;
+        this.mesh.add(this.powerRing);
     }
 
     setInitialPosition(index) {
@@ -252,7 +351,10 @@ export class NPC {
 
             if (d > 0.001 && d < avoidanceDist) {
                 const diff = this.position.clone().sub(other.position);
-                diff.normalize().divideScalar(d);
+                diff.normalize();
+                // Clamp minimum distance to avoid extreme force spikes (jitter source)
+                const force = Math.min(2.0, 1.0 / Math.max(0.1, d)); // Cap the push force
+                diff.multiplyScalar(force);
                 steer.add(diff);
                 count++;
             }
@@ -283,6 +385,7 @@ export class NPC {
     update(delta, others, playerPos, monsterPos, goldBossPos) {
         if (this.hp <= 0) return;
         if (!delta || delta <= 0 || isNaN(delta)) delta = 0.016; // Safety fallback for delta
+        this.lastDelta = delta; // Store for async loops
 
         // Freeze prevents movement
         if (this.statusEffects?.includes('freeze')) {
@@ -381,7 +484,7 @@ export class NPC {
             if (this.lastPosition) {
                 const distance = this.position.distanceTo(this.lastPosition);
                 this.totalDistanceTraveled += distance;
-                
+
                 // Increase momentum based on distance traveled
                 if (distance > 0.001) {
                     this.momentum = Math.min(
@@ -391,19 +494,19 @@ export class NPC {
                 }
             }
             this.lastPosition = this.position.clone();
-            
+
             // Momentum decay
             this.momentum *= GAME_RULES.YELLOW_MOMENTUM_DECAY;
             if (this.momentum < 1.0) this.momentum = 1.0;
-            
+
             // Apply momentum to speed (include potential frenzy multiplier)
             this.maxSpeed = this.baseMaxSpeed * this.momentum * (this.frenzyMultiplier || 1.0);
-            
+
             // Energy system
             if (!this.isCharging) {
                 // Energy drains over time
                 this.energy = Math.max(0, this.energy - (GAME_RULES.YELLOW_ENERGY_DRAIN * delta));
-                
+
                 // Recharge energy when at high speed or if moving for a while
                 if (this.velocity.length() > GAME_RULES.YELLOW_MIN_MOVEMENT_TO_RECHARGE) {
                     this.energy = Math.min(
@@ -420,11 +523,11 @@ export class NPC {
                     this.completeCharge();
                 }
             }
-            
+
             // Update FOV based on charging state
             const fovRadius = this.isCharging ? GAME_RULES.YELLOW_CHARGE_FOV : GAME_RULES.YELLOW_BASE_FOV;
             this.fovRing.scale.setScalar(fovRadius);
-            
+
             // Visual effect for high momentum (yellow/lightning aura)
             if (this.momentum > 1.5) {
                 const intensity = 1 + (this.momentum - 1.0) * 0.5;
@@ -458,7 +561,7 @@ export class NPC {
                                 updateState({ npcs: [...state.npcs] });
                             }
                             // Knockback: push other away
-                            const dir = o.position ? o.position.clone().sub(this.position).normalize() : new THREE.Vector3(0,0,1);
+                            const dir = o.position ? o.position.clone().sub(this.position).normalize() : new THREE.Vector3(0, 0, 1);
                             // Attempt to apply force to instance if available
                             const inst = this.scene.children.find(c => c.name === o.id);
                             if (inst && inst.applyForce) inst.applyForce(dir.multiplyScalar(0.5));
@@ -467,11 +570,15 @@ export class NPC {
                 });
             }
         }
-        
-        // Update Physics (FOR ALL NPCs)
-        this.velocity.add(this.acceleration);
+
+        // Update Physics (FOR ALL NPCs) - Framerate Independent
+        const physicsStep = delta * 60; // Normalize to 60fps
+
+        // Acceleration already includes forces like separation/wander
+        this.velocity.add(this.acceleration.clone().multiplyScalar(physicsStep));
         this.velocity.clampLength(0, this.maxSpeed);
-        this.position.add(this.velocity);
+        this.position.add(this.velocity.clone().multiplyScalar(physicsStep));
+        this.acceleration.set(0, 0, 0);
 
         // NaN Safety Check
         if (isNaN(this.position.x) || isNaN(this.position.y) || isNaN(this.position.z)) {
@@ -490,23 +597,32 @@ export class NPC {
         // Growth Scaling (Clamped)
         let targetScale = this.baseScale + (this.level - 1) * 0.05;
         targetScale = Math.min(targetScale, 3.0);
-        this.mesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+        const scaleLerpFactor = 1 - Math.exp(-6.0 * delta); // Smooth and frame-rate independent
+        this.mesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), scaleLerpFactor);
 
         // Visual Animations
         this.body.rotation.y += delta;
         this.body.position.y = Math.sin(Date.now() * 0.002) * 0.2;
+
+        if (this.auraMat && this.auraMat.uniforms) {
+            this.auraMat.uniforms.time.value += delta;
+        }
+
         this.aura.rotation.z += delta * 0.5;
         this.aura.scale.setScalar(1 + Math.sin(Date.now() * 0.005) * 0.1);
 
-        this.particles.children.forEach((p, i) => {
-            p.position.y += Math.sin(Date.now() * 0.001 + i) * 0.01;
-            p.rotation.x += delta;
-        });
+        // Premium Energy Trails
+        if (this.velocity.length() > 0.01) {
+            this.createEnergyTrail(delta);
+        }
+
+        // Premium Energy Bits update is handled below
 
         // Update FOV Ring Visual
         const fovScale = (this.class === 'purple') ? 20 : 1;
         this.fovRing.scale.setScalar(fovScale);
-        this.fovRing.material.opacity = (this.class === 'purple') ? 0.05 : 0.15;
+        // Pulsing glow for FOV
+        this.fovRing.material.opacity = (0.3 + Math.sin(Date.now() * 0.003) * 0.1) * ((this.class === 'purple') ? 0.4 : 1.0);
 
         // Update VFX
         this.updateVFX(delta);
@@ -523,6 +639,45 @@ export class NPC {
         if (this.hp < this.maxHp * 0.25) {
             if (Math.random() > 0.8) this.createSmokeBurst(0x555555);
             this.body.material.emissiveIntensity = 2 + Math.sin(Date.now() * 0.01) * 2;
+        }
+
+        // Update Energy Bits Animation
+        if (this.energyBits) {
+            this.energyBits.forEach(b => {
+                b.angle += delta * b.speed;
+                const r = b.dist + Math.sin(Date.now() * 0.005) * 0.1;
+                b.mesh.position.set(Math.cos(b.angle) * r, Math.sin(Date.now() * 0.002) * 0.5, Math.sin(b.angle) * r);
+                b.mesh.rotation.set(b.angle, b.angle, b.angle);
+            });
+        }
+
+        // Update NPC Light and Glow Pulse
+        if (this.light) {
+            this.light.intensity = 10 + Math.sin(Date.now() * 0.005) * 5;
+        }
+        if (this.glowSprite) {
+            const s = (5 + Math.sin(Date.now() * 0.003) * 0.5) * targetScale;
+            this.glowSprite.scale.set(s, s, 1);
+            this.glowSprite.material.opacity = 0.4 + Math.sin(Date.now() * 0.005) * 0.2;
+        }
+
+        if (this.softGlow) {
+            const s = (4 + Math.sin(Date.now() * 0.002) * 1.0) * targetScale;
+            this.softGlow.scale.set(s, s, 1);
+            this.softGlow.material.opacity = 0.15 + Math.sin(Date.now() * 0.004) * 0.05;
+        }
+
+        if (this.powerRing) {
+            this.powerRing.rotation.z += delta * 2;
+            const s = 1 + Math.sin(Date.now() * 0.005) * 0.1;
+            this.powerRing.scale.set(s, s, s);
+            this.powerRing.material.opacity = 0.6 + Math.sin(Date.now() * 0.01) * 0.2;
+        }
+
+        // Breathing light effect for NPC body
+        if (this.body && this.body.material) {
+            // Emissive breathing - intensity between 3 and 7
+            this.body.material.emissiveIntensity = 4 + Math.sin(Date.now() * 0.004) * 3;
         }
 
         if (window.debugNPCs && this.id.includes('aliado_1')) {
@@ -591,7 +746,7 @@ export class NPC {
         const oldPos = this.position.clone();
         const vfxFactor = this.getVfxFactor();
         const vfxScale = this.getVfxScale();
-        
+
         // Departure effect - swirling particles (performance optimized)
         const teleportParticles = CONSTANTS.VFX.MAX_TELEPORT_PARTICLES;
         for (let i = 0; i < teleportParticles; i++) {
@@ -613,7 +768,7 @@ export class NPC {
                 (Math.random() - 0.5) * 1.0 * vfxScale
             ));
             this.scene.add(particle);
-            
+
             const angle = (i / teleportParticles) * Math.PI * 2;
             const radius = 0.5;
             let particleLife = 0.8;
@@ -637,10 +792,10 @@ export class NPC {
             };
             particleAnimate();
         }
-        
+
         // Departure burst
         this.createAuraBurst(0xaa00ff);
-        
+
         // Teleport to new position
         const range = 40;
         const newPos = new THREE.Vector3(
@@ -650,11 +805,11 @@ export class NPC {
         );
         this.position.copy(newPos);
         this.mesh.position.copy(newPos);
-        
+
         // Arrival effect - burst and particles
         setTimeout(() => {
             this.createAuraBurst(0xaa00ff);
-            
+
             // Arrival particles (performance optimized)
             for (let i = 0; i < teleportParticles; i++) {
                 const particleGeo = new THREE.SphereGeometry(0.08, 8, 8);
@@ -670,7 +825,7 @@ export class NPC {
                 const particle = new THREE.Mesh(particleGeo, particleMat);
                 particle.position.copy(newPos);
                 this.scene.add(particle);
-                
+
                 const dir = new THREE.Vector3(
                     (Math.random() - 0.5) * 0.9 * vfxScale,
                     (Math.random() - 0.5) * 0.9 * vfxScale,
@@ -693,7 +848,7 @@ export class NPC {
                 particleAnimate();
             }
         }, 100);
-        
+
         this.body.material.emissiveIntensity = 50;
         setTimeout(() => this.body.material.emissiveIntensity = 1.0, 200);
     }
@@ -704,7 +859,7 @@ export class NPC {
             this.xp -= this.maxXp;
             this.level = Math.min(GAME_RULES.MAX_NPC_LEVEL, this.level + 1);
             this.maxXp = StatRules.calculateMaxXP(this.level, this.class);
-            
+
             // Update yellow NPC energy when leveling up
             if (this.class === 'yellow') {
                 this.maxEnergy = GAME_RULES.YELLOW_BASE_ENERGY + (this.level * GAME_RULES.YELLOW_ENERGY_PER_LEVEL);
@@ -724,8 +879,8 @@ export class NPC {
             // Log Event
             const npcName = this.class ? this.class.toUpperCase() : this.id.toUpperCase();
             window.dispatchEvent(new CustomEvent('game-log', {
-                detail: { 
-                    message: `${npcName} alcançou o Nível ${this.level}!`, 
+                detail: {
+                    message: `${npcName} alcançou o Nível ${this.level}!`,
                     type: 'levelup',
                     data: {
                         npcName: npcName,
@@ -740,7 +895,7 @@ export class NPC {
         if (!targetPos) return;
         const startPos = this.position.clone().add(new THREE.Vector3(0, 1, 0));
         const vfxFactor = this.getVfxFactor();
-        
+
         // Create main lightning bolts (performance optimized)
         const boltCount = CONSTANTS.VFX.MAX_LIGHTNING_BOLTS;
         for (let i = 0; i < boltCount; i++) {
@@ -750,24 +905,29 @@ export class NPC {
             const step = targetPos.clone().sub(startPos).divideScalar(segments);
             for (let j = 1; j < segments; j++) {
                 const p = startPos.clone().add(step.clone().multiplyScalar(j));
-                const jitter = (1 - j / segments) * 2.0 * vfxFactor; // Slightly damped jitter
-                p.x += (Math.random() - 0.5) * jitter;
-                p.y += (Math.random() - 0.5) * jitter;
-                p.z += (Math.random() - 0.5) * jitter;
+                const jitterAmt = (1 - j / segments) * 2.0 * vfxFactor; // Slightly damped jitter
+                p.x += (Math.random() - 0.5) * jitterAmt;
+                p.y += (Math.random() - 0.5) * jitterAmt;
+                p.z += (Math.random() - 0.5) * jitterAmt;
+
+                // Ensure no NaN positions
+                if (isNaN(p.x)) p.x = startPos.x;
+                if (isNaN(p.y)) p.y = startPos.y;
+                if (isNaN(p.z)) p.z = startPos.z;
                 points.push(p);
             }
             points.push(targetPos.clone());
-            
+
             const curve = new THREE.CatmullRomCurve3(points);
             const thickness = (0.06 + Math.random() * 0.04) * (0.8 + 0.4 * vfxFactor);
             const geo = new THREE.TubeGeometry(curve, 32, thickness, 8, false);
-            
+
             // Brighter, more electric color with emissive (use Standard for consistent emissive handling)
-            const mat = new THREE.MeshStandardMaterial({ 
+            const mat = new THREE.MeshStandardMaterial({
                 color: 0xffff00,
                 emissive: 0xffff66,
                 emissiveIntensity: 6.0 * vfxFactor,
-                transparent: true, 
+                transparent: true,
                 opacity: 1,
                 metalness: 0,
                 roughness: 0.2
@@ -780,7 +940,7 @@ export class NPC {
                 const flash = new THREE.PointLight(0xffffcc, 2.5 * vfxFactor, 12);
                 flash.position.copy(targetPos);
                 this.scene.add(flash);
-                setTimeout(() => { try { this.scene.remove(flash); } catch(e) {} }, 120);
+                setTimeout(() => { try { this.scene.remove(flash); } catch (e) { } }, 120);
             } catch (e) { /* ignore for headless tests */ }
 
             let life = 0.3 * (1 + vfxFactor * 0.5); // Slightly longer with vfx
@@ -798,7 +958,7 @@ export class NPC {
             };
             animate();
         }
-        
+
         // Add a short bloom flash for visibility
         try {
             console.debug(`[NPC:${this.id}] Lightning fired at`, targetPos);
@@ -811,12 +971,12 @@ export class NPC {
         const particleCount = CONSTANTS.VFX.MAX_LIGHTNING_PARTICLES;
         for (let i = 0; i < particleCount; i++) {
             const geo = new THREE.SphereGeometry(0.15, 8, 8);
-            const mat = new THREE.MeshPhongMaterial({ 
+            const mat = new THREE.MeshPhongMaterial({
                 color: 0xffffff,
                 emissive: 0xffff00,
                 emissiveIntensity: 3,
-                transparent: true, 
-                opacity: 1 
+                transparent: true,
+                opacity: 1
             });
             const particle = new THREE.Mesh(geo, mat);
             particle.position.copy(targetPos);
@@ -826,7 +986,7 @@ export class NPC {
                 (Math.random() - 0.5) * 2
             ));
             this.scene.add(particle);
-            
+
             const velocity = new THREE.Vector3(
                 (Math.random() - 0.5) * 0.3,
                 (Math.random() - 0.5) * 0.3,
@@ -848,13 +1008,13 @@ export class NPC {
             };
             animate();
         }
-        
+
         // Add electric glow sphere at impact
         const glowGeo = new THREE.SphereGeometry(1.5, 16, 16);
-        const glowMat = new THREE.MeshBasicMaterial({ 
+        const glowMat = new THREE.MeshBasicMaterial({
             color: 0xffffaa,
-            transparent: true, 
-            opacity: 0.6 
+            transparent: true,
+            opacity: 0.6
         });
         const glow = new THREE.Mesh(glowGeo, glowMat);
         glow.position.copy(targetPos);
@@ -1004,7 +1164,7 @@ export class NPC {
         const startPos = this.position.clone();
         const dir = targetPos.clone().sub(startPos).normalize();
         const distance = startPos.distanceTo(targetPos);
-        
+
         // Create fireball with trail
         const fireballGeo = new THREE.SphereGeometry(0.5, 16, 16);
         const fireballMat = new THREE.MeshBasicMaterial({
@@ -1017,15 +1177,18 @@ export class NPC {
         const fireball = new THREE.Mesh(fireballGeo, fireballMat);
         fireball.position.copy(startPos);
         this.scene.add(fireball);
-        
+
         // Animate fireball trajectory
-        let fireballLife = distance / 0.8;
+        let fireballLife = Math.min(3.0, distance / 0.8);
+        const totalLife = fireballLife;
         const fireballAnimate = () => {
-            fireballLife -= 0.016;
-            if (fireballLife > 0) {
-                const progress = 1 - (fireballLife / (distance / 0.8));
+            const step = (this.lastDelta > 0 && this.lastDelta < 0.1) ? this.lastDelta : 0.016;
+            fireballLife -= step;
+            if (fireballLife > 0 && this.scene) {
+                const progress = 1 - (fireballLife / totalLife);
+                if (isNaN(progress)) { fireballLife = 0; return; }
                 fireball.position.lerpVectors(startPos, targetPos, progress);
-                
+
                 // Add trailing particles
                 if (Math.random() > 0.7) {
                     const trailGeo = new THREE.SphereGeometry(0.1, 8, 8);
@@ -1060,8 +1223,8 @@ export class NPC {
                 const explosionParticles = CONSTANTS.VFX.MAX_FIRE_PARTICLES;
                 for (let i = 0; i < explosionParticles; i++) {
                     const geo = new THREE.SphereGeometry(0.15 + Math.random() * 0.25, 8, 8);
-                    const color = Math.random() > 0.5 ? 
-                        (Math.random() > 0.5 ? 0xff4400 : 0xffff00) : 
+                    const color = Math.random() > 0.5 ?
+                        (Math.random() > 0.5 ? 0xff4400 : 0xffff00) :
                         (Math.random() > 0.5 ? 0xff0000 : 0xff8800);
                     const mat = new THREE.MeshStandardMaterial({
                         color: color,
@@ -1097,7 +1260,7 @@ export class NPC {
                     };
                     animate();
                 }
-                
+
                 // Smoke cloud (performance optimized)
                 const smokeParticles = CONSTANTS.VFX.MAX_FIRE_SMOKE;
                 for (let i = 0; i < smokeParticles; i++) {
@@ -1136,7 +1299,7 @@ export class NPC {
                     };
                     smokeAnimate();
                 }
-                
+
                 // Explosion glow
                 const expGlowGeo = new THREE.SphereGeometry(2, 16, 16);
                 const expGlowMat = new THREE.MeshBasicMaterial({
@@ -1161,7 +1324,7 @@ export class NPC {
                     }
                 };
                 expGlowAnimate();
-                
+
                 fireball.geometry.dispose();
                 fireball.material.dispose();
                 this.scene.remove(fireball);
@@ -1174,11 +1337,11 @@ export class NPC {
         // Multiple expanding rings for more impact
         for (let ring = 0; ring < 3; ring++) {
             const geo = new THREE.TorusGeometry(1 + ring * 0.3, 0.08, 32, 100);
-            const mat = new THREE.MeshStandardMaterial({ 
+            const mat = new THREE.MeshStandardMaterial({
                 color: 0x8b4513,
                 emissive: 0x4400aa,
                 emissiveIntensity: 1.5,
-                transparent: true, 
+                transparent: true,
                 opacity: 0.8,
                 metalness: 0,
                 roughness: 0.9
@@ -1211,24 +1374,24 @@ export class NPC {
         // Enhanced gravity well with multiple layers
         // Core black hole
         const coreGeo = new THREE.SphereGeometry(1.5, 32, 32);
-        const coreMat = new THREE.MeshPhongMaterial({ 
-            color: 0x000000, 
+        const coreMat = new THREE.MeshPhongMaterial({
+            color: 0x000000,
             emissive: 0x220044,
             emissiveIntensity: 3,
-            transparent: true, 
-            opacity: 0.9 
+            transparent: true,
+            opacity: 0.9
         });
         const core = new THREE.Mesh(coreGeo, coreMat);
         core.position.copy(pos);
         this.scene.add(core);
-        
+
         // Outer energy sphere
         const outerGeo = new THREE.SphereGeometry(2.5, 32, 32);
-        const outerMat = new THREE.MeshStandardMaterial({ 
+        const outerMat = new THREE.MeshStandardMaterial({
             color: 0x4400ff,
             emissive: 0x6600ff,
             emissiveIntensity: 2,
-            transparent: true, 
+            transparent: true,
             opacity: 0.4,
             wireframe: false,
             metalness: 0,
@@ -1237,7 +1400,7 @@ export class NPC {
         const outer = new THREE.Mesh(outerGeo, outerMat);
         outer.position.copy(pos);
         this.scene.add(outer);
-        
+
         // Particle stream effect (particles being pulled in - performance optimized)
         const gravityParticles = CONSTANTS.VFX.MAX_GRAVITY_PARTICLES;
         for (let i = 0; i < gravityParticles; i++) {
@@ -1252,7 +1415,7 @@ export class NPC {
                 roughness: 0.8
             });
             const particle = new THREE.Mesh(particleGeo, particleMat);
-            
+
             // Start from random position around the well
             const angle = Math.random() * Math.PI * 2;
             const radius = 5 + Math.random() * 3;
@@ -1262,7 +1425,7 @@ export class NPC {
                 pos.z + Math.sin(angle) * radius
             );
             this.scene.add(particle);
-            
+
             let particleLife = 1.0;
             const particleAnimate = () => {
                 particleLife -= 0.02;
@@ -1281,7 +1444,7 @@ export class NPC {
             };
             setTimeout(() => particleAnimate(), Math.random() * 200);
         }
-        
+
         // Animate core and outer sphere
         let life = 2.0;
         const animate = () => {
@@ -1290,17 +1453,17 @@ export class NPC {
                 const pulse = Math.sin(Date.now() * 0.005) * 0.15 + 1;
                 core.scale.setScalar(pulse);
                 outer.scale.setScalar(pulse * 1.2);
-                
+
                 core.material.opacity = life * 0.9;
                 outer.material.opacity = life * 0.4;
                 core.material.emissiveIntensity = life * 3;
                 outer.material.emissiveIntensity = life * 2;
-                
+
                 // Rotate the outer sphere
                 const _vfxFactor = this.getVfxFactor();
                 outer.rotation.y += 0.02 * _vfxFactor;
                 core.rotation.x += 0.01 * _vfxFactor;
-                
+
                 requestAnimationFrame(animate);
             } else {
                 core.geometry.dispose();
@@ -1330,17 +1493,17 @@ export class NPC {
 
         // Main void orb with pulsing energy
         const geo = new THREE.SphereGeometry(0.9, 32, 32);
-        const mat = new THREE.MeshPhongMaterial({ 
-            color: 0xaa00ff, 
+        const mat = new THREE.MeshPhongMaterial({
+            color: 0xaa00ff,
             emissive: 0xff00ff,
-            emissiveIntensity: 4 * (this.getVfxFactor()), 
-            transparent: true, 
-            opacity: 0.95 
+            emissiveIntensity: 4 * (this.getVfxFactor()),
+            transparent: true,
+            opacity: 0.95
         });
         const orbe = new THREE.Mesh(geo, mat);
         orbe.position.copy(startPos);
         this.scene.add(orbe);
-        
+
         // Outer aura ring
         const auraGeo = new THREE.TorusGeometry(1.2, 0.1, 16, 32);
         const auraMat = new THREE.MeshStandardMaterial({
@@ -1356,7 +1519,7 @@ export class NPC {
         aura.position.copy(startPos);
         aura.lookAt(targetPos);
         this.scene.add(aura);
-        
+
         // Distortion particles around the orb (performance optimized)
         const particles = [];
         const voidParticleCount = CONSTANTS.VFX.MAX_VOID_PARTICLES;
@@ -1382,25 +1545,28 @@ export class NPC {
             this.scene.add(particle);
             particles.push({ mesh: particle, angle, radius, offset: Math.random() * Math.PI * 2 });
         }
-        
-        let life = distance / 0.5;
+
+        let life = Math.min(4.0, distance / 0.5);
+        const totalLife = life;
         const animate = () => {
-            life -= 0.016;
-            if (life > 0) {
-                const progress = 1 - (life / (distance / 0.5));
+            const step = (this.lastDelta > 0 && this.lastDelta < 0.1) ? this.lastDelta : 0.016;
+            life -= step;
+            if (life > 0 && this.scene) {
+                const progress = 1 - (life / totalLife);
+                if (isNaN(progress)) { life = 0; return; }
                 const currentPos = startPos.clone().lerp(targetPos, progress);
                 orbe.position.copy(currentPos);
                 aura.position.copy(currentPos);
-                
+
                 // Pulsing effect (damped by VFX factor)
                 const pulse = 1 + Math.sin(Date.now() * 0.02) * 0.3 * vfxFactor;
                 orbe.scale.setScalar(pulse);
                 aura.scale.setScalar(pulse);
-                
+
                 // Rotate aura (damped)
                 aura.rotation.z += 0.05 * vfxFactor;
                 orbe.rotation.y += 0.03 * vfxFactor;
-                
+
                 // Animate particles (reduced radius & vertical jitter)
                 particles.forEach((p, i) => {
                     const time = Date.now() * 0.001 + p.offset;
@@ -1412,7 +1578,7 @@ export class NPC {
                     );
                     p.mesh.material.opacity = 0.8 * vfxFactor;
                 });
-                
+
                 requestAnimationFrame(animate);
             } else {
                 // Impact effect (performance optimized)
@@ -1457,7 +1623,7 @@ export class NPC {
                     };
                     impactAnimate();
                 }
-                
+
                 // Cleanup
                 orbe.geometry.dispose();
                 orbe.material.dispose();
@@ -1479,21 +1645,21 @@ export class NPC {
         if (!targetPos) return;
         const startPos = this.position.clone();
         const dir = targetPos.clone().sub(startPos).normalize();
-        
+
         // Create ice shards with more variety (performance optimized)
         const shardCount = CONSTANTS.VFX.MAX_ICE_SHARDS;
         for (let i = 0; i < shardCount; i++) {
             // Vary the geometry - mix of cones and octahedrons for variety
             const useCone = Math.random() > 0.5;
-            const geo = useCone ? 
+            const geo = useCone ?
                 new THREE.ConeGeometry(0.15 + Math.random() * 0.15, 0.6 + Math.random() * 0.4, 6) :
                 new THREE.OctahedronGeometry(0.2 + Math.random() * 0.15, 0);
-            
-            const mat = new THREE.MeshPhongMaterial({ 
+
+            const mat = new THREE.MeshPhongMaterial({
                 color: 0x88eeff,
                 emissive: 0x00ffff,
                 emissiveIntensity: 2.5,
-                transparent: true, 
+                transparent: true,
                 opacity: 0.9,
                 shininess: 100,
                 specular: 0xffffff
@@ -1505,21 +1671,21 @@ export class NPC {
                 (Math.random() - 0.5) * 0.5,
                 (Math.random() - 0.5) * 0.5
             ));
-            
+
             // Orient towards target with random spread
             shard.lookAt(targetPos);
             shard.rotateX(Math.PI / 2);
             shard.rotateX((Math.random() - 0.5) * 0.5);
             shard.rotateY((Math.random() - 0.5) * 0.5);
             shard.rotateZ((Math.random() - 0.5) * 0.5);
-            
+
             this.scene.add(shard);
             const shardDir = dir.clone();
             shardDir.x += (Math.random() - 0.5) * 0.4;
             shardDir.y += (Math.random() - 0.5) * 0.4;
             shardDir.z += (Math.random() - 0.5) * 0.4;
             shardDir.normalize();
-            
+
             let life = 1.0;
             const spinSpeed = 0.3 + Math.random() * 0.3;
             const animate = () => {
@@ -1540,7 +1706,7 @@ export class NPC {
             };
             animate();
         }
-        
+
         // Add ice particles trailing behind (performance optimized)
         const iceParticleCount = CONSTANTS.VFX.MAX_ICE_PARTICLES;
         for (let i = 0; i < iceParticleCount; i++) {
@@ -1586,12 +1752,12 @@ export class NPC {
         // Multiple expanding rings for freezing effect
         for (let ring = 0; ring < 4; ring++) {
             const geo = new THREE.TorusGeometry(2 + ring * 0.3, 0.08, 32, 100);
-            const mat = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffff,
-                emissive: 0x88eeff,
-                emissiveIntensity: 2,
-                transparent: true, 
-                opacity: 0.7 
+            const abilityColor = CONSTANTS.NPC_COLORS[this.class] || 0x00ffff;
+            const mat = new THREE.MeshBasicMaterial({
+                color: abilityColor,
+                transparent: true,
+                opacity: 0.7,
+                blending: THREE.AdditiveBlending
             });
             const mesh = new THREE.Mesh(geo, mat);
             mesh.rotation.x = Math.PI / 2;
@@ -1613,16 +1779,15 @@ export class NPC {
             };
             setTimeout(() => animate(), delay * 1000);
         }
-        
+
         // Ice crystal burst at center
         for (let i = 0; i < 12; i++) {
             const crystalGeo = new THREE.ConeGeometry(0.1, 0.4, 6);
             const crystalMat = new THREE.MeshBasicMaterial({
-                color: 0xffffff,
-                emissive: 0x88eeff,
-                emissiveIntensity: 2,
+                color: CONSTANTS.NPC_COLORS[this.class] || 0xffffff,
                 transparent: true,
-                opacity: 0.9
+                opacity: 0.9,
+                blending: THREE.AdditiveBlending
             });
             const crystal = new THREE.Mesh(crystalGeo, crystalMat);
             crystal.position.copy(this.position);
@@ -1651,11 +1816,11 @@ export class NPC {
     createAuraBurst(color) {
         // Enhanced aura burst with multiple layers
         const geo = new THREE.SphereGeometry(0.5, 16, 16);
-        const mat = new THREE.MeshStandardMaterial({ 
-            color, 
+        const mat = new THREE.MeshStandardMaterial({
+            color,
             emissive: color,
             emissiveIntensity: 2,
-            transparent: true, 
+            transparent: true,
             opacity: 0.9,
             metalness: 0,
             roughness: 0.6
@@ -1663,7 +1828,7 @@ export class NPC {
         const burst = new THREE.Mesh(geo, mat);
         burst.position.copy(this.position);
         this.scene.add(burst);
-        
+
         // Outer glow ring for more impact
         const ringGeo = new THREE.RingGeometry(0.6, 1.0, 32);
         const ringMat = new THREE.MeshStandardMaterial({
@@ -1680,7 +1845,7 @@ export class NPC {
         ring.position.copy(this.position);
         ring.rotation.x = -Math.PI / 2;
         this.scene.add(ring);
-        
+
         let life = 1.0;
         const vfxFactor = this.getVfxFactor();
         const animate = () => {
@@ -1690,11 +1855,11 @@ export class NPC {
                 burst.scale.setScalar(scale);
                 burst.material.opacity = life * 0.9 * Math.min(1, 0.8 + 0.2 * vfxFactor);
                 burst.material.emissiveIntensity = life * 2 * vfxFactor;
-                
+
                 ring.scale.setScalar(scale * (1.2 * vfxFactor + (1 - vfxFactor)));
                 ring.material.opacity = life * 0.6 * vfxFactor;
                 ring.rotation.z += 0.05 * vfxFactor;
-                
+
                 requestAnimationFrame(animate);
             } else {
                 burst.geometry.dispose();
@@ -1772,11 +1937,11 @@ export class NPC {
         trail.rotation.copy(this.mesh.rotation);
         trail.scale.copy(this.mesh.scale);
         this.scene.add(trail);
+        if (!this.trails) this.trails = [];
         this.trails.push({ mesh: trail, life: 1.0 });
     }
 
     updateVFX(delta) {
-        this.updateTrails(delta);
         // Add other continuous VFX updates here if needed
     }
 
@@ -1784,16 +1949,74 @@ export class NPC {
         for (let i = this.trails.length - 1; i >= 0; i--) {
             const t = this.trails[i];
             t.life -= delta * 2;
-            t.mesh.material.opacity = t.life * 0.3;
+            if (t.mesh.material) t.mesh.material.opacity = t.life * 0.3;
+
             if (t.life <= 0) {
                 this.scene.remove(t.mesh);
+                if (t.mesh.geometry) t.mesh.geometry.dispose();
+                if (t.mesh.material) t.mesh.material.dispose();
                 this.trails.splice(i, 1);
             }
+        }
+
+        // Cap trails for performance
+        if (this.trails.length > 15) {
+            const old = this.trails.shift();
+            this.scene.remove(old.mesh);
+            if (old.mesh.geometry) old.mesh.geometry.dispose();
+            if (old.mesh.material) old.mesh.material.dispose();
+        }
+    }
+
+    createEnergyTrail(delta) {
+        if (Math.random() > 0.7) {
+            const geo = new THREE.SphereGeometry(0.12, 4, 4);
+            const mat = new THREE.MeshBasicMaterial({
+                color: CONSTANTS.NPC_COLORS[this.class] || 0xffffff,
+                transparent: true,
+                opacity: 0.6,
+                blending: THREE.AdditiveBlending
+            });
+            const p = new THREE.Mesh(geo, mat);
+            p.position.copy(this.position);
+            p.position.y += (Math.random() - 0.5) * 0.5;
+            this.scene.add(p);
+
+            gsap.to(p.scale, { x: 0, y: 0, z: 0, duration: 0.8, ease: "power2.out" });
+            gsap.to(p.material, {
+                opacity: 0, duration: 0.8, onComplete: () => {
+                    p.geometry.dispose();
+                    p.material.dispose();
+                    this.scene.remove(p);
+                }
+            });
         }
     }
 
     destroy() {
         this.scene.remove(this.mesh);
-        if (this.lightningLine) { this.scene.remove(this.lightningLine); }
+
+        // Dispose main mesh
+        this.mesh.traverse(child => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                else child.material.dispose();
+            }
+        });
+
+        // Cleanup remaining trails
+        this.trails.forEach(t => {
+            this.scene.remove(t.mesh);
+            if (t.mesh.geometry) t.mesh.geometry.dispose();
+            if (t.mesh.material) t.mesh.material.dispose();
+        });
+        this.trails = [];
+
+        if (this.lightningLine) {
+            this.scene.remove(this.lightningLine);
+            if (this.lightningLine.geometry) this.lightningLine.geometry.dispose();
+            if (this.lightningLine.material) this.lightningLine.material.dispose();
+        }
     }
 }

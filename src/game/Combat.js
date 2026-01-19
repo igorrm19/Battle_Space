@@ -474,8 +474,8 @@ export function npcAttack(npcId, npcInstances) {
             const attackerName = npc.class ? npc.class.toUpperCase() : npc.id.toUpperCase();
 
             window.dispatchEvent(new CustomEvent('game-log', {
-                detail: { 
-                    message: `${attackerName} eliminou ${targetName}!`, 
+                detail: {
+                    message: `${attackerName} eliminou ${targetName}!`,
                     type: target.id.includes('boss') ? 'boss' : 'kill',
                     data: {
                         npcName: targetName,

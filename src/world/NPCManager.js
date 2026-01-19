@@ -5,8 +5,9 @@ import { npcAttack } from '../game/Combat.js';
 import { audioManager } from '../core/Audio.js';
 
 export class NPCManager {
-    constructor(scene, hud) {
-        this.scene = scene;
+    constructor(sceneManager, hud) {
+        this.sceneManager = sceneManager;
+        this.scene = sceneManager.scene;
         this.hud = hud;
         this.npcs = [];
         this.npcTimers = new Map();
@@ -48,7 +49,7 @@ export class NPCManager {
         this.npcs = configs.map(cfg => {
             const level = this.generateWeightedLevel();
             const npc = new NPC(this.scene, { ...cfg, level });
-            
+
             // Log spawn event
             const npcName = npc.class ? npc.class.toUpperCase() : npc.id.toUpperCase();
             window.dispatchEvent(new CustomEvent('game-log', {
@@ -60,7 +61,7 @@ export class NPCManager {
                     }
                 }
             }));
-            
+
             return npc;
         });
 
@@ -74,7 +75,8 @@ export class NPCManager {
                 level: n.level,
                 isZombie: false,
                 strategy: n.strategy,
-                stats: n.stats || { atk: 30, def: 10, eva: 0.1 }
+                stats: n.stats || { atk: 30, def: 10, eva: 0.1 },
+                statusEffects: []
             }))
         });
     }
@@ -96,7 +98,7 @@ export class NPCManager {
                         }
                     }
                 }));
-                
+
                 // Zombie Death Link
                 if (n.class === 'darkgreen') {
                     this.npcs.forEach(z => {
@@ -227,7 +229,8 @@ export class NPCManager {
             id, hp: npc.maxHp, maxHp: npc.maxHp, faction, class: cls,
             level: npc.level, isZombie: false,
             strategy: npc.strategy,
-            stats: npc.stats
+            stats: npc.stats,
+            statusEffects: []
         };
 
         this.npcs.push(npc);

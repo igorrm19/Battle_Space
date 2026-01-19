@@ -28,9 +28,18 @@ export class EnvironmentManager {
 
             // Effect logic
             entities.forEach(entity => {
-                const dist = entity.position.distanceTo(h.mesh.position);
-                if (dist < h.radius) {
-                    this.applyEffect(h, entity, delta);
+                if (entity && entity.position) {
+                    const ePos = entity.position;
+                    const hPos = h.mesh.position;
+                    // Robust distance calculation (handles Vector3 and plain objects)
+                    const dx = (ePos.x || 0) - (hPos.x || 0);
+                    const dy = (ePos.y || 0) - (hPos.y || 0);
+                    const dz = (ePos.z || 0) - (hPos.z || 0);
+                    const distSq = dx * dx + dy * dy + dz * dz;
+
+                    if (distSq < h.radius * h.radius) {
+                        this.applyEffect(h, entity, delta);
+                    }
                 }
             });
 
@@ -56,10 +65,19 @@ export class EnvironmentManager {
 
             let collected = false;
             for (const entity of entities) {
-                if (entity.hp > 0 && entity.position.distanceTo(p.mesh.position) < 2.5) {
-                    this.applyPowerUp(p, entity);
-                    collected = true;
-                    break;
+                if (entity && entity.position && entity.hp > 0) {
+                    const ePos = entity.position;
+                    const pPos = p.mesh.position;
+                    const dx = (ePos.x || 0) - (pPos.x || 0);
+                    const dy = (ePos.y || 0) - (pPos.y || 0);
+                    const dz = (ePos.z || 0) - (pPos.z || 0);
+                    const distSq = dx * dx + dy * dy + dz * dz;
+
+                    if (distSq < 6.25) { // 2.5 * 2.5
+                        this.applyPowerUp(p, entity);
+                        collected = true;
+                        break;
+                    }
                 }
             }
 

@@ -17,6 +17,7 @@
     "vitest": "^4.0.16"
   },
   "dependencies": {
+    "gsap": "^3.14.2",
     "three": "^0.160.0"
   }
 }

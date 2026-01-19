@@ -8,6 +8,7 @@ import { audioManager } from './Audio.js';
 import { NPCManager } from '../world/NPCManager.js';
 import { NPCPanelManager } from '../ui/NPCPanelManager.js';
 import { GameEventsLogger } from '../ui/GameEventsLogger.js';
+import { gsap } from 'gsap';
 
 export class Game {
     constructor() {
@@ -16,7 +17,7 @@ export class Game {
         this.monster = new Monster(this.sceneManager.scene);
         this.goldBoss = this.initGoldBoss();
         this.hud = new HUD(this.container);
-        this.npcManager = new NPCManager(this.sceneManager.scene, this.hud);
+        this.npcManager = new NPCManager(this.sceneManager, this.hud);
         this.npcPanelManager = new NPCPanelManager(this.hud, this.npcManager);
         this.eventsLogger = new GameEventsLogger();
         this.clock = new THREE.Clock();
@@ -50,7 +51,8 @@ export class Game {
         this.aiCooldown = 3.0;
 
         window.focusTarget = (id) => {
-            this.sceneManager.setFocus(() => this.npcManager.getTargetPosition(id));
+            this.sceneManager.setFocus(() => this.npcManager.getTargetPosition(id), 60); // 1 minute focus
+            this.sceneManager.focusId = id; // Ensure outline is hidden
         };
 
         // Expose game instance for HUD button access
@@ -80,22 +82,24 @@ export class Game {
             this.goldBoss.visible = true;
             this.monster.mesh.visible = true;
             resetMonster();
-            audioManager.playStart();
 
-            // Log initial spawns
-            this.eventsLogger.logInfo('Entidade do Vazio surgiu');
-            this.eventsLogger.logInfo('Deusa do Ouro apareceu');
+            // Start Cinematic Intro
+            this.playCinematicIntro();
 
             // Listen to existing game-log events and route to GameEventsLogger
             window.addEventListener('game-log', (e) => {
                 const { message, type, data } = e.detail;
+                if (type === 'levelup') {
+                    this.sceneManager.triggerGlitch(0.15);
+                    this.sceneManager.triggerScreenShake(0.4);
+                }
+
                 switch (type) {
                     case 'kill':
                     case 'death':
                         if (data && data.npcName) {
                             this.eventsLogger.logDeath(data.npcName, data.killerName);
                         } else {
-                            // Fallback: try to parse message
                             this.eventsLogger.addEvent(message, 'death');
                         }
                         break;
@@ -103,7 +107,6 @@ export class Game {
                         if (data && data.npcName && data.newLevel) {
                             this.eventsLogger.logLevelUp(data.npcName, data.newLevel);
                         } else {
-                            // Fallback: try to parse message
                             this.eventsLogger.addEvent(message, 'levelup');
                         }
                         break;
@@ -121,10 +124,6 @@ export class Game {
                             this.eventsLogger.addEvent(message, 'combat');
                         }
                         break;
-                    case 'boss':
-                    case 'info':
-                        this.eventsLogger.logInfo(message);
-                        break;
                     default:
                         this.eventsLogger.logInfo(message);
                 }
@@ -134,7 +133,7 @@ export class Game {
             setTimeout(() => {
                 this.npcPanelManager.start();
                 console.log('[Game] NPC Panel auto-rotation started');
-            }, 2000); // Wait 2 seconds for NPCs to spawn
+            }, 5000); // Wait 5 seconds for NPCs to spawn and intro to play
 
             window.addEventListener('keydown', (e) => this.keys[e.code] = true);
             window.addEventListener('keyup', (e) => this.keys[e.code] = false);
@@ -142,280 +141,235 @@ export class Game {
                 audioManager.resume();
                 this.handleMouseClick(e);
             });
+            window.addEventListener('mousemove', (e) => {
+                this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            });
+
+            // NPC Panel Controls
+            const npcCloseBtn = document.getElementById('npc-close-btn');
+            if (npcCloseBtn) {
+                npcCloseBtn.onclick = () => {
+                    document.getElementById('npc-info-panel').classList.remove('visible');
+                    this.sceneManager.focusId = null; // Restore outlines
+                };
+            }
+            const npcNextBtn = document.getElementById('npc-next-btn');
+            if (npcNextBtn) {
+                npcNextBtn.onclick = () => {
+                    this.npcPanelManager.nextNPC();
+                };
+            }
         } catch (e) {
-            console.error("Init Error:", e);
-            this.hud.showNotification("ERRO INICIALIZACAO: " + e.message, "#ff0000");
+            console.error("Game Init Error:", e);
         }
+    }
+
+    playCinematicIntro() {
+        // Start far away looking at the Singularity
+        const singularity = this.sceneManager.celestialBodies[0].group;
+        if (!singularity) return;
+
+        this.sceneManager.setFocus(() => singularity.position, 6.0);
+        this.sceneManager.cameraGroup.position.set(0, 100, 200);
+
+        const skipBtn = document.getElementById('skip-intro-btn');
+        if (skipBtn) {
+            skipBtn.style.display = 'block';
+            skipBtn.onclick = () => {
+                gsap.killTweensOf(this.sceneManager.cameraGroup.position);
+                this.sceneManager.cameraGroup.position.set(0, 10, 25);
+                this.sceneManager.setFocus(null);
+                skipBtn.style.display = 'none';
+                this.hud.showNotification("A BATALHA PELO VAZIO COMEÇOU", "#ff00ff");
+                audioManager.playStart();
+            };
+        }
+
+        gsap.to(this.sceneManager.cameraGroup.position, {
+            x: 0,
+            y: 10,
+            z: 25,
+            duration: 6,
+            delay: 0.5,
+            ease: "expo.inOut",
+            onComplete: () => {
+                if (skipBtn) skipBtn.style.display = 'none';
+                this.hud.showNotification("A BATALHA PELO VAZIO COMEÇOU", "#ff00ff");
+                audioManager.playStart();
+                this.sceneManager.triggerGlitch(0.1);
+            }
+        });
+
+        // Intro message
+        this.eventsLogger.logInfo('O Vazio está se expandindo...');
     }
 
     initGoldBoss() {
-        const geo = new THREE.SphereGeometry(0.8, 32, 32); // Reduced from 1.2
+        const group = new THREE.Group();
+        const geo = new THREE.OctahedronGeometry(4, 0);
         const mat = new THREE.MeshPhysicalMaterial({
-            color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 2,
-            metalness: 1, roughness: 0
+            color: 0xffd700,
+            metalness: 1,
+            roughness: 0.1,
+            emissive: 0xffaa00,
+            emissiveIntensity: 2
         });
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(12, 5, -5);
-        mesh.visible = false;
+        group.add(mesh);
 
-        // Add Glow
-        const light = new THREE.PointLight(0xffd700, 10, 20);
-        mesh.add(light);
+        // Add orbital rings
+        for (let i = 0; i < 3; i++) {
+            const rGeo = new THREE.TorusGeometry(6 + i * 2, 0.1, 8, 50);
+            const rMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.5 });
+            const ring = new THREE.Mesh(rGeo, rMat);
+            ring.rotation.x = Math.random() * Math.PI;
+            ring.rotation.y = Math.random() * Math.PI;
+            group.add(ring);
+        }
 
-        // Add Halo
-        const haloGeo = new THREE.RingGeometry(1.0, 1.3, 32); // Reduced from 1.6, 1.9
-        const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd700, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-        const halo = new THREE.Mesh(haloGeo, haloMat);
-        halo.rotation.x = Math.PI / 2;
-        mesh.add(halo);
-        this.goldHalo = halo;
-
-        this.sceneManager.scene.add(mesh);
-        return mesh;
+        group.position.set(40, 5, -40);
+        this.sceneManager.scene.add(group);
+        return group;
     }
 
     handleMouseClick(event) {
-        console.log('[Game] Mouse click detected, target:', event.target.tagName);
-        if (event.target.tagName !== 'CANVAS') {
-            console.log('[Game] Click ignored - not on canvas');
-            return; // Ignore UI clicks
-        }
-
-        this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         this.raycaster.setFromCamera(this.mouse, this.sceneManager.camera);
+        const intersects = this.raycaster.intersectObjects(this.sceneManager.scene.children, true);
 
-        // Check for NPC clicks
-        const npcMeshes = this.npcManager.npcs.map(n => n.mesh);
-        console.log('[Game] Total NPCs:', this.npcManager.npcs.length);
-        console.log('[Game] NPC meshes:', npcMeshes.length);
-
-        const intersectsNPC = this.raycaster.intersectObjects(npcMeshes, true);
-        console.log('[Game] NPC intersections found:', intersectsNPC.length);
-
-        if (intersectsNPC.length > 0) {
-            console.log('[Game] First intersection:', intersectsNPC[0]);
-            // Find the root NPC object from the intersected mesh
-            let obj = intersectsNPC[0].object;
-            while (obj.parent && !this.npcManager.npcs.find(n => n.mesh === obj)) {
-                obj = obj.parent;
-            }
-            const npc = this.npcManager.npcs.find(n => n.mesh === obj);
-            console.log('[Game] Found NPC:', npc ? npc.id : 'null');
-            if (npc) {
-                console.log('[Game] Calling showNPCInfo for:', npc.id);
-                // Use NPCPanelManager to show NPC (resets rotation timer)
-                this.npcPanelManager.showNPC(npc);
-                // Set camera focus on this NPC
-                this.sceneManager.setFocus(() => npc.mesh.position);
-                return; // Stop processing if clicked on NPC
-            }
-        }
-
-        // Movement logic (if needed)
-        const intersects = this.raycaster.intersectObject(this.sceneManager.floor);
         if (intersects.length > 0) {
-            // Don't hide NPC info panel here - let user close it manually or by clicking another NPC
-            this.clickTarget = intersects[0].point.clone();
-            this.sceneManager.updateClickMarker(this.clickTarget);
+            let target = intersects[0].object;
+            // Climb up to find the NPC group if possible
+            let current = target;
+            while (current.parent && !current.userData.npcId) {
+                current = current.parent;
+            }
+
+            if (current.userData.npcId) {
+                this.hud.showNPCInfo(current.userData.npcId);
+                return;
+            }
+
+            // Otherwise, move player or attack monster
+            const groundIntersect = intersects.find(i => i.object === this.sceneManager.floor);
+            if (groundIntersect) {
+                const targetPos = groundIntersect.point;
+                this.sceneManager.updateClickMarker(targetPos);
+                this.playerPos.copy(targetPos);
+
+                // If clicked near monster, attack
+                const monsterDist = targetPos.distanceTo(state.monsterPos);
+                if (monsterDist < 10) {
+                    this.handlePlayerAttack();
+                }
+
+                const goldBossDist = targetPos.distanceTo(new THREE.Vector3(40, 0, -40));
+                if (goldBossDist < 10) {
+                    this.handleGoldBossAttack();
+                }
+            }
         }
     }
 
     handlePlayerAttack() {
-        if (!state.inBattle) return;
         const result = playerAttack();
-        this.monster.takeDamage(result.isCrit);
-        this.sceneManager.spawnDamageNumber(result.dmg, this.monster.mesh.position, result.isCrit);
-        this.sceneManager.triggerImpactEffect();
-        audioManager.playHit();
-        this.combo++;
-        this.comboTimer = 2.0;
-        this.hud.updateCombo(this.combo);
-    }
-
-    handleSkillAttack() {
-        if (!state.inBattle || state.mp < 200) return;
-        const result = skillAttack();
-        if (result) {
-            this.monster.takeDamage(true);
-            this.sceneManager.spawnDamageNumber(result.dmg, this.monster.mesh.position, true);
+        if (result.hit) {
             this.sceneManager.triggerImpactEffect();
-            audioManager.playSkill();
-            this.triggerHitStop(0.15);
-        }
-    }
-
-    handleMonsterAttack(type = 'normal', targetId = 'player', attackerId = 'void_boss') {
-        const result = monsterAttack(type, targetId, this.npcManager.npcs);
-        if (!result) return;
-        const targetPos = this.npcManager.getTargetPosition(targetId);
-
-        if (attackerId === 'void_boss') {
-            this.monster.performAttack(targetPos);
-        } else if (attackerId === 'gold_boss') {
-            // Gold Boss Lunge
-            const originalPos = this.goldBoss.position.clone();
-            const dir = targetPos.clone().sub(this.goldBoss.position).normalize();
-            this.goldBoss.position.add(dir.multiplyScalar(3));
-            setTimeout(() => this.goldBoss.position.copy(originalPos), 200);
-        }
-
-        this.sceneManager.spawnDamageNumber(result.dmg || 'MISS', targetPos, result.isCrit);
-        if (result.dmg > 0) {
-            this.sceneManager.triggerImpactEffect();
+            this.sceneManager.spawnDamageNumber(result.damage, state.monsterPos, result.crit);
+            this.monster.takeDamage();
+            this.combo++;
+            this.comboTimer = 2.0;
+            this.hud.updateCombo(this.combo);
             audioManager.playHit();
-            if (targetId === 'player') this.hud.updatePlayerHp();
         }
-        if (result.defeated && targetId === 'player') this.hud.showGameOver();
     }
 
-    triggerHitStop(duration) {
-        this.timeScale = 0.1;
-        setTimeout(() => this.timeScale = 1.0, duration * 1000);
+    handleGoldBossAttack() {
+        const result = playerAttack();
+        if (result.hit) {
+            this.sceneManager.triggerImpactEffect();
+            this.sceneManager.spawnDamageNumber(result.damage, new THREE.Vector3(40, 5, -40), result.crit);
+            this.combo++;
+            this.comboTimer = 2.0;
+            this.hud.updateCombo(this.combo);
+            audioManager.playHit();
+
+            // Damage gold boss in state
+            const boss = state.bosses.gold;
+            boss.hp = Math.max(0, boss.hp - result.damage);
+            updateState({ bosses: { ...state.bosses, gold: boss } });
+        }
+    }
+
+    handleSkillAttack(skillId) {
+        const result = skillAttack(skillId);
+        if (result.success) {
+            this.sceneManager.triggerImpactEffect();
+            this.sceneManager.triggerGlitch(0.3);
+            this.sceneManager.spawnDamageNumber(result.damage, state.monsterPos, true);
+            this.monster.takeDamage();
+            audioManager.playSkill();
+            this.hud.showNotification(`${skillId.toUpperCase()} ATIVADO!`, "#ff00ff");
+        }
+    }
+
+    update(delta) {
+        // Regenerate Mana
+        regenerateMana(delta);
+
+        // Update Combo
+        if (this.comboTimer > 0) {
+            this.comboTimer -= delta;
+            if (this.comboTimer <= 0) {
+                this.combo = 0;
+                this.hud.updateCombo(0);
+            }
+        }
+
+        // Update Managers
+        this.npcManager.update(delta);
+        this.npcPanelManager.update(delta);
+        this.monster.update(delta, this.playerPos, state);
+
+        // Gold Boss Animation
+        if (this.goldBoss) {
+            this.goldBoss.rotation.y += delta * 0.5;
+            this.goldBoss.position.y = 5 + Math.sin(this.clock.getElapsedTime()) * 2;
+            // Update light intensity based on HP
+            const bossHpPerc = state.bosses.gold.hp / 40000;
+            this.goldBoss.children[0].material.emissiveIntensity = 1 + (1 - bossHpPerc) * 5;
+        }
+
+        // Monster attack AI
+        this.aiTimer += delta;
+        if (this.aiTimer > this.aiCooldown) {
+            if (state.monsterHp > 0) {
+                const result = monsterAttack();
+                if (result.hit) {
+                    this.sceneManager.triggerImpactEffect();
+                    this.sceneManager.triggerGlitch(0.2);
+                    this.hud.showNotification("MONSTRO ATACOU!", "#ff0000");
+                }
+            }
+            this.aiTimer = 0;
+        }
+
+        this.hud.update(state);
     }
 
     animate() {
         requestAnimationFrame(() => this.animate());
-        try {
-            const delta = this.clock.getDelta() * this.timeScale;
+        const delta = this.clock.getDelta() * this.timeScale;
+        this.update(delta);
 
-            // Player Movement
-            let moveDir = new THREE.Vector3();
-            if (this.keys['KeyW'] || this.keys['ArrowUp']) moveDir.z -= 1;
-            if (this.keys['KeyS'] || this.keys['ArrowDown']) moveDir.z += 1;
-            if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveDir.x -= 1;
-            if (this.keys['KeyD'] || this.keys['ArrowRight']) moveDir.x += 1;
-            if (this.keys['Space']) moveDir.y += 1;
-            if (this.keys['ShiftLeft']) moveDir.y -= 1;
+        // Pass entities for Environment Manager update (Player, Bosses, NPCs)
+        const entities = [
+            { position: this.playerPos, radius: 2, isPlayer: true, hp: state.hp, maxHp: state.maxHp },
+            { position: state.monsterPos, radius: 5, isMonster: true, hp: state.monsterHp, maxHp: state.maxMonsterHp },
+            { position: this.goldBoss.position, radius: 5, isGoldBoss: true, hp: state.bosses.gold.hp, maxHp: state.bosses.gold.maxHp },
+            ...this.npcManager.npcs
+        ];
 
-            if (moveDir.length() > 0) {
-                let speed = 0.5; // Faster camera speed
-                if (this.keys['ShiftLeft']) speed = 1.0; // Sprint
-                this.playerPos.add(moveDir.normalize().multiplyScalar(speed));
-                this.clickTarget = null;
-            }
-
-            // Free Camera Boundaries (Expanded)
-            this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, -100, 100);
-            this.playerPos.y = THREE.MathUtils.clamp(this.playerPos.y, 5, 50); // Fly height
-            this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, -100, 100);
-
-            if (state.inBattle) {
-                // Boss AI & Physics
-                const voidTarget = this.npcManager.getTargetPosition(state.monsterTarget);
-                if (voidTarget) this.monster.applyForce(this.monster.seek(voidTarget));
-
-                this.monster.update(delta, this.mouse, state);
-
-                // Safety check for NaN positions
-                const checkNaN = (vec, defaultVec) => {
-                    if (isNaN(vec.x) || isNaN(vec.y) || isNaN(vec.z)) {
-                        vec.copy(defaultVec);
-                        return true;
-                    }
-                    return false;
-                };
-
-                if (checkNaN(this.playerPos, new THREE.Vector3(0, 10, 25))) {
-                    console.warn("Player Pos NaN fixed");
-                }
-                if (checkNaN(this.monster.mesh.position, new THREE.Vector3(0, 0, 0))) {
-                    console.warn("Monster Pos NaN fixed");
-                }
-                if (checkNaN(this.goldBoss.position, new THREE.Vector3(12, 5, -5))) {
-                    console.warn("Gold Boss Pos NaN fixed");
-                }
-
-                updateState({
-                    playerPos: this.playerPos.clone(),
-                    monsterPos: this.monster.mesh.position.clone(),
-                    goldBossPos: this.goldBoss.position.clone()
-                });
-
-                const safeDelta = (delta > 0 && delta < 0.5) ? delta : 0.016;
-                this.npcManager.update(safeDelta, this.playerPos);
-
-                // Update NPC panel auto-rotation
-                this.npcPanelManager.update(safeDelta);
-
-                if (this.goldBoss.visible) {
-                    // Gold Boss Steering
-                    const goldTargetId = state.goldTarget || 'player';
-                    const goldTarget = this.npcManager.getTargetPosition(goldTargetId);
-                    if (goldTarget) {
-                        const desired = goldTarget.clone().sub(this.goldBoss.position);
-                        if (!isNaN(desired.x) && !isNaN(desired.y) && !isNaN(desired.z) && desired.length() > 5) {
-                            desired.normalize().multiplyScalar(0.1);
-                            this.goldBoss.position.add(desired);
-                        }
-                    }
-
-                    this.goldBoss.position.y = 5 + Math.sin(this.clock.elapsedTime * 2) * 0.5;
-                    this.goldBoss.rotation.y += delta;
-                    if (this.goldHalo) {
-                        this.goldHalo.rotation.z += delta * 2;
-                        this.goldHalo.scale.setScalar(1 + Math.sin(this.clock.elapsedTime * 4) * 0.1);
-                    }
-                }
-
-
-                // Combo Timer
-                if (this.comboTimer > 0) {
-                    this.comboTimer -= delta;
-                    if (this.comboTimer <= 0) { this.combo = 0; this.hud.updateCombo(0); }
-                }
-
-                // Monster AI Decision (Enabled)
-                this.aiTimer += delta;
-                if (this.aiTimer >= this.aiCooldown) {
-                    this.aiTimer = 0;
-                    // Void Boss targets Gold Boss or Strongest NPC
-                    const targets = [{ id: 'gold_boss', level: 100 }, ...state.npcs.filter(n => n.hp > 0)];
-                    // Sort by threat (Level)
-                    targets.sort((a, b) => (b.level || 0) - (a.level || 0));
-
-                    // 70% chance to hit top threat, 30% random
-                    const target = Math.random() < 0.7 ? targets[0] : targets[Math.floor(Math.random() * targets.length)];
-
-                    if (target) {
-                        updateState({ monsterTarget: target.id });
-                        this.handleMonsterAttack('normal', target.id, 'void_boss');
-                    }
-                }
-
-                // Gold Boss AI Decision (Enabled)
-                if (this.goldBoss.visible) {
-                    this.goldBossTimer = (this.goldBossTimer || 0) + delta;
-                    if (this.goldBossTimer >= 4) {
-                        this.goldBossTimer = 0;
-                        // Gold Boss targets Void Boss or Strongest NPC
-                        const targets = [{ id: 'void_boss', level: 100 }, ...state.npcs.filter(n => n.hp > 0)];
-                        targets.sort((a, b) => (b.level || 0) - (a.level || 0));
-
-                        const target = Math.random() < 0.7 ? targets[0] : targets[Math.floor(Math.random() * targets.length)];
-
-                        if (target) {
-                            updateState({ goldTarget: target.id });
-                            this.handleMonsterAttack('normal', target.id, 'gold_boss');
-                        }
-                    }
-                }
-
-                regenerateMana(delta);
-                // Stamina Regeneration
-                if (state.stamina < state.maxStamina) {
-                    updateState({ stamina: Math.min(state.maxStamina, state.stamina + state.sRegen * delta) });
-                }
-            }
-
-            const entities = [
-                { id: 'player', position: this.playerPos, hp: state.hp, maxHp: state.maxHp, isPlayer: true },
-                { id: 'void_boss', position: this.monster.mesh.position, hp: state.monsterHp, maxHp: state.maxMonsterHp, isMonster: true },
-                { id: 'gold_boss', position: this.goldBoss.position, hp: state.bosses.gold.hp, maxHp: state.bosses.gold.maxHp, isGoldBoss: true },
-                ...this.npcManager.npcs.filter(n => n.hp > 0)
-            ];
-
-            this.sceneManager.render(delta, this.monster.mesh.position, this.goldBoss.position, this.playerPos, entities);
-        } catch (e) { console.error(e); }
+        this.sceneManager.render(delta, state.monsterPos, new THREE.Vector3(40, 5, -40), this.playerPos, entities);
     }
 }

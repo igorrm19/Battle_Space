@@ -39,15 +39,18 @@ Melhorias visuais e de usabilidade para quem está assistindo.
     - **Cura ao Matar**: Efeito visual verde e recuperação de vida ao eliminar inimigos (feedback de recompensa).
     - **Cores de Facção**: Halos coloridos para identificar facilmente a quem o NPC pertence.
 
-## 🧟 Necromante (Melhorias de Classe)
-Aprimoramentos específicos para a classe Verde Escuro.
+## 🧠 Estabilidade e Suavidade (Zero Jitter)
+Implementações para garantir máxima fluidez visual.
 
-- **Vampirismo de Almas**:
-    - Ao transformar um inimigo em Zumbi, o Necromante recupera **20% de HP**.
-    - Ganha um bônus permanente de **+5 ATK** e **+2 DEF** por zumbi criado.
-- **IA de Lacaios (Zumbis)**:
-    - Zumbis agora são leais e **seguem o mestre** pelo mapa.
-    - Formam um exército coeso em vez de vagarem aleatoriamente.
+- **Câmera Ultra-Suave**: 
+    - Implementação de hierarquia de câmera (`cameraGroup`).
+    - Separação física entre o tremor de tela (screen shake) e a posição base da câmera.
+    - Uso de interpolação amortecida (`Damped Lerp`) para seguir o jogador e alvos.
+- **Física Baseada em Delta Time**:
+    - Todos os sistemas de movimento agora são independentes da taxa de quadros (FPS). NPCs e câmera movem-se na mesma velocidade em qualquer monitor (60Hz, 144Hz+), eliminando "shuttering" e "jitter".
+- **VFX Profissional**:
+    - Shaders de distorção e aberração cromática suavizados para evitar artefatos de "linhas de luz" ou "tremores" distractivos.
+    - Limpeza sistemática de rastros e efeitos para manter a performance estável.
 
 ## 🧠 Inteligência Artificial (IA)
 Melhorias na tomada de decisão de NPCs e Chefes.
@@ -57,33 +60,9 @@ Melhorias na tomada de decisão de NPCs e Chefes.
     - **Fuga**: Se um inimigo chegar muito perto (< 8 unidades), o curandeiro foge para sobreviver.
 - **Chefes (Bosses)**:
     - **Sistema de Ameaça**: Chefes agora focam nos alvos mais fortes (Maior Nível ou o outro Chefe) em 70% das vezes.
-    - Isso cria duelos épicos entre os Chefes e os "Campeões" dos NPCs.
-    - **Aprendizado de Combate**:
-        - NPCs que sobrevivem por muito tempo **aprendem** com a batalha.
-        - A cada **10 segundos** vivos, eles ganham **+1 INT** e **+0.5% EVA**.
-        - Veteranos de guerra tornam-se naturalmente mais difíceis de matar e mais eficientes.
-    - **Blocos de Poder (Power-Ups)**:
-        - Pequenos cubos coloridos surgem no campo de batalha.
-        - **🟩 Verde**: Recupera 20% de Vida.
-        - **🟥 Vermelho**: Aumenta o Ataque (+2 Permanente).
-        - **🟦 Azul**: Aumenta a Defesa (+1 Permanente).
-        - **🟦 Ciano**: Aumenta a Vida Máxima (+50 Permanente).
-        - NPCs e Chefes competem por esses recursos para ficarem mais fortes.
+- **Aprendizado de Combate**:
+    - NPCs veteranos ganham bônus de Inteligência e Evasão quanto mais tempo sobrevivem.
 
 ## 🎨 Visual e Interface (UI)
-Melhorias na apresentação e interatividade.
-
-- **Inspetor de NPCs**:
-    - Ao clicar em qualquer NPC, um painel detalhado aparece mostrando:
-        - **Atributos**: ATK, DEF, INT (Novo!) e EVA.
-        - **Status**: Vida atual/máxima, Nível e Facção.
-    - Permite analisar a força de cada unidade individualmente.
-    - **Efeitos Visuais (VFX)**:
-    - **Fogo**: Partículas mais densas e com movimento de subida realista.
-    - **Raios**: Mais segmentos e "jitter" para parecer eletricidade real.
-    - **Redução de Tremores Visuais**: Adicionado `CONSTANTS.VFX.INTENSITY_MULTIPLIER` e `CONSTANTS.VFX.REDUCED_SHAKE` para reduzir amplitude/velocidade de partículas, rotações e pulsos quando necessário; Void Orb, Teleport e Aura bursts foram polidos para reduzir jitter e flashes agressivos quando o modo está ativado.
-    - **Inteligência (INT)**: Novo atributo adicionado que diferencia classes mágicas (Magos) de guerreiras.
-    - **Log de Batalha**:
-        - Novo painel no canto inferior direito.
-        - Notifica em tempo real: **Mortes** (Vermelho), **Level Up** (Amarelo) e **Derrota de Chefes** (Roxo).
-        - Permite acompanhar o fluxo da guerra sem perder detalhes.
+- **Inspetor de NPCs**: Painel detalhado ao clicar em unidades.
+- **Log de Batalha**: Notificações em tempo real de mortes, subidas de nível e vitórias de chefes.

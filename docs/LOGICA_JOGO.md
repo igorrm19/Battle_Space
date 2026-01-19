@@ -1,40 +1,34 @@
-# Lógica do Jogo - Battle Aquarium
+# Lógica de Jogo - Battle Aquarium
 
-## Visão Geral
-Battle Aquarium é um simulador de batalha autônomo onde NPCs de diferentes classes e facções lutam pela supremacia. O jogador atua como um espectador (uma "câmera fantasma"), observando o caos evoluir.
+Este documento detalha o funcionamento interno do jogo e suas mecânicas.
 
-## Mecânicas Principais
+### 1. Movimentação (Boids Simplificado)
+Os NPCs usam uma lógica baseada em comportamentos de grupo:
+- **Separação**: Evitam colidir uns com os outros.
+- **Busca**: Movem-se em direção ao seu alvo (Monstro ou Boss).
+- **Fuga**: Alguns NPCs (como Curandeiros) fogem se o perigo estiver muito próximo.
+- **Independência de FPS**: Toda física é calculada usando `delta time`, garantindo movimento suave em qualquer computador.
 
-### 1. Loop de Jogo (Game Loop)
-O jogo roda em um loop contínuo que atualiza:
-- **Estado (State)**: Vida, posição e status de todos os NPCs e Chefes.
-- **IA (Inteligência Artificial)**: Decisões de movimento e combate.
-- **Física**: Movimento, colisão e separação.
-- **Renderização**: Gráficos 3D e efeitos visuais.
+### 2. Atributos dos NPCs
+- **ATK (Ataque)**: Dano causado por golpe.
+- **DEF (Defesa)**: Redução de dano recebido.
+- **INT (Inteligência)**: Aumenta a eficácia de habilidades especiais (Cura, Void, Raio).
+- **EVA (Evasão)**: Chance de desviar totalmente de um ataque.
 
-### 2. Combate
-- **Ataque Automático**: NPCs atacam inimigos próximos automaticamente.
-- **Dano**: Baseado no ATK do atacante e DEF do defensor. Críticos causam 2x dano.
-- **Cura ao Matar**: Quem dá o golpe final recupera **30% da vida máxima**. Isso incentiva a sobrevivência dos mais fortes.
+### 3. Sistema de Nível e Facções
+- Matar inimigos concede XP. 
+- Ao subir de nível, todos os atributos aumentam e o NPC cresce visualmente.
+- Existem facções identificadas por cores (Halos). NPCs da mesma facção não se atacam.
 
-### 3. Evolução (Level Up)
-- **XP**: NPCs ganham experiência ao causar dano e ao matar inimigos.
-- **Nível**: Ao acumular XP suficiente, o NPC sobe de nível.
-- **Crescimento**:
-    - **Status**: HP, ATK e DEF aumentam.
-    - **Tamanho**: O NPC cresce visualmente (5% maior por nível, até 3x o tamanho original).
-
-### 4. Chefes (Bosses)
-Existem duas entidades supremas no mapa:
-- **Entidade do Vazio (Roxo)**: Fica no centro ou vaga pelo mapa. Extremamente forte.
-- **Deusa do Ouro (Dourado)**: Uma fonte de poder que também se defende.
+### 4. Ciclo de Combate
+- O jogo é um "Battle Simulator". NPCs lutam entre si e contra dois Chefes Globais.
+- Os Chefes possuem inteligência superior e focam nos alvos mais perigosos.
 
 ### 5. Modo Espectador
 - O jogador não tem corpo físico.
 - Controles: **WASD** para mover a câmera, **Shift** para acelerar.
-- O objetivo é apenas assistir e relaxar vendo as batalhas.
+- **Sistema de Câmera Suave**: Utiliza hierarquia de objetos e interpolação amortecida para garantir estabilidade total e zero jitter.
 
 ### 6. Efeitos Visuais e Suavidade
-- Para usuários sensíveis a tremores visuais, existe um controle global em `src/data/Constants.js` (`CONSTANTS.VFX.REDUCED_SHAKE`) que reduz amplitude e velocidade de partículas, rotações e flutuações de brilho; este modo agora está ativado por padrão para uma experiência mais estável.
-- As habilidades visuais críticas foram suavizadas: o **Void Orb** aplica dano de forma determinística (agora ignora defesa) e teve sua animação de partícula reduzida; o **Teleport** agora apresenta um efeito de chegada/partida menos agressivo e aciona um anel de "revelação global" (omniscience) como feedback visível.
-- **Melhoria de Raios (Lightning)**: os raios agora usam material com emissive mais forte, jitter atenuado e um ponto de luz transitório no impacto para garantir que o efeito seja sempre visível.
+- **Zero Jitter**: O sistema garante que os efeitos visuais (rastros, raios) acompanhem o movimento sem "tremer".
+- **Modo de Redução de Tremor**: Configuração global em `Constants.js` que suaviza flashes e movimentos bruscos para uma experiência mais confortável.

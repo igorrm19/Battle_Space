@@ -23,6 +23,18 @@
             height: 100vh;
         }
 
+        /* Cinematic Vignette Overlay */
+        #vignette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: radial-gradient(circle, transparent 40%, rgba(0, 0, 0, 0.6) 100%);
+            z-index: 9999;
+        }
+
         #ui-layer {
             position: absolute;
             bottom: 20px;
@@ -52,20 +64,22 @@
         /* NPC Info Panel */
         #npc-info-panel {
             position: fixed;
-            top: 80px;
+            top: 20px;
             right: 20px;
             width: 300px;
-            background: rgba(0, 0, 0, 0.98);
-            border: 4px solid #fff;
-            box-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+            background: rgba(10, 10, 25, 0.85);
+            /* Darker cosmic blue */
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 0 25px rgba(0, 255, 255, 0.3), inset 0 0 10px rgba(255, 255, 255, 0.1);
             padding: 25px;
             color: #fff;
             font-family: 'Cinzel', serif;
             z-index: 999999;
             pointer-events: auto;
             display: none;
-            border-radius: 12px;
-            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            backdrop-filter: blur(15px);
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
         }
 
         #npc-info-panel.visible {
@@ -134,20 +148,21 @@
         /* Game Events Log Panel */
         #game-events-panel {
             position: fixed;
-            top: 550px;
+            bottom: 80px;
             right: 20px;
-            width: 300px;
-            max-height: 400px;
-            background: rgba(0, 0, 0, 0.95);
-            border: 3px solid #888;
-            box-shadow: 0 0 20px rgba(136, 136, 136, 0.5);
-            padding: 15px;
+            width: 320px;
+            max-height: 350px;
+            background: rgba(10, 5, 20, 0.8);
+            border: 1px solid rgba(136, 136, 136, 0.4);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            padding: 20px;
             color: #fff;
             font-family: 'Cinzel', serif;
             z-index: 999998;
             pointer-events: auto;
-            border-radius: 10px;
+            border-radius: 15px;
             overflow-y: auto;
+            backdrop-filter: blur(10px);
         }
 
         #game-events-panel h4 {
@@ -219,6 +234,7 @@
 </head>
 
 <body>
+    <div id="vignette"></div>
     <div id="app"></div>
 
     <!-- NPC Info Panel -->
@@ -236,6 +252,9 @@
 
     <div id="ui-layer">
         <button class="menu-btn" id="save-btn" style="border-color: #0f0; color: #0f0;">SALVAR</button>
+        <button id="skip-intro-btn"
+            style="position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); display: none; z-index: 1000000; background: rgba(0,0,0,0.8); color: #fff; border: 1px solid #00ffff; padding: 10px 20px; font-family: 'Cinzel', serif; cursor: pointer; border-radius: 5px; box-shadow: 0 0 15px #00ffff;">PULAR
+            INTRO</button>
     </div>
     <script type="module" src="/src/main.js"></script>
 </body>
